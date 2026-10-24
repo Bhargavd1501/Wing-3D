@@ -92,7 +92,11 @@ input[type=range]{width:100%;margin:2px 0 4px;accent-color:var(--acc);height:22p
 #plotWrap.on{display:block}
 #plot{display:block;width:260px;height:112px;cursor:pointer;position:static}
 .row3{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}.row3>button{flex:1 1 30%;padding:5px 2px;font-size:12px}
-#hud.off{display:none}
+#diag{display:none;position:fixed;inset:0;z-index:60;background:rgba(6,9,14,.92);align-items:center;justify-content:center;padding:16px}
+#diag.on{display:flex}
+#diag .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:560px;max-height:90%;overflow:auto;user-select:text}
+#diag pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--txt);margin:8px 0}
+#diag button{width:auto;padding:6px 18px}
 @media (max-height:430px){#plot{width:230px;height:96px}}
 </style>
 </head>
@@ -165,6 +169,7 @@ input[type=range]{width:100%;margin:2px 0 4px;accent-color:var(--acc);height:22p
       <select id="quality"><option value="auto" selected>Auto (hold 60 FPS)</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option><option value="3">Ultra</option></select>
       <div class="row"><button id="pause">⏸ Pause</button><button id="reset">↺ Reset wake</button></div>
       <div class="row"><button id="full">⛶ Fullscreen</button><button id="install">⬇ Install app</button></div>
+      <div class="row"><button id="installHelp">ⓘ Install help / check</button></div>
     </div>
     <div class="note">Educational model: Weissinger-type lifting-surface solver with a nonlinear stall curve, a rolling-up free-vortex wake and empirical separation. Not a full 3-D Navier–Stokes solution; valid for M &lt; 0.7.</div>
   </aside>
@@ -201,6 +206,8 @@ input[type=range]{width:100%;margin:2px 0 4px;accent-color:var(--acc);height:22p
     <div id="hint">Drag to orbit · pinch / wheel to zoom · ↑/↓ change α · Space pauses</div>
   </main>
 </div>
+
+<div id="diag"><div class="box"><b>Install check</b><pre id="diagText"></pre><button id="diagClose">Close</button></div></div>
 
 <div id="rotate" class="on">
   <div class="ic">📱</div>
@@ -454,8 +461,8 @@ const LUT_SPD = makeLUT([[0, 12, 16, 46], [0.2, 32, 44, 160], [0.4, 22, 150, 205
 const LUT_SEP = makeLUT([[0, 70, 100, 150], [0.45, 90, 130, 180], [0.55, 235, 170, 60], [1, 255, 60, 50]]);
 
 const TIERS = [
-  { K: 12, R: 22, Kv: 28, Nc: 10, np: 900, ne: [10, 2] }, { K: 16, R: 28, Kv: 36, Nc: 12, np: 1500, ne: [14, 2] },
-  { K: 20, R: 34, Kv: 44, Nc: 14, np: 2300, ne: [14, 3] }, { K: 24, R: 40, Kv: 52, Nc: 16, np: 3300, ne: [18, 3] }
+  { K: 12, R: 22, Kv: 30, Nc: 14, np: 900, ne: [10, 2] }, { K: 16, R: 28, Kv: 42, Nc: 18, np: 1500, ne: [14, 2] },
+  { K: 20, R: 34, Kv: 56, Nc: 22, np: 2300, ne: [14, 3] }, { K: 24, R: 40, Kv: 72, Nc: 26, np: 3300, ne: [18, 3] }
 ];
 const TRAIL = 12, PTRAIL = 16;
 /* normalised flat-plate loading shape  g(xi) = sqrt((1-xi)/(xi+0.02)),  integral = G  */
@@ -634,7 +641,7 @@ function main() {
     }
   }
   /* wake-plane slice: vertical velocity w/Vinf on a plane x = const */
-  const PU = 30, PV = 18, planeW = new Float32Array((PU + 1) * (PV + 1)); let planeAge = 999;
+  const PU = 44, PV = 28, planeW = new Float32Array((PU + 1) * (PV + 1)); let planeAge = 999;
   const PLY = 1.7, PLZ0 = -0.9, PLZ1 = 0.9;
   function updatePlane() {
     planeAge = 0; const x = S.planeX + 0.4;
@@ -781,16 +788,31 @@ function main() {
     for (const pts of streamPaths) { let pen = false; for (let i = 0; i < pts.length; i += 3) { const zc = proj(pts[i], pts[i + 1], pts[i + 2], pa); if ((zc < wingDepth ? 1 : 0) !== front) { pen = false; continue; } pen ? ctx.lineTo(pa[0], pa[1]) : ctx.moveTo(pa[0], pa[1]); pen = true; } }
     ctx.stroke();
   }
+  const planeCv = document.createElement('canvas'), planeCtx = planeCv.getContext('2d'); let planeImg = null, planeBW = 0, planeBH = 0;
+  function planeDepthOf() { proj(S.planeX + 0.4, 0, 0, a3); return a3[2]; }
   function drawPlane() {
-    if (!S.plane) return; const x = S.planeX + 0.4, pa = [0, 0, 0], pb = [0, 0, 0], pc = [0, 0, 0], pd = [0, 0, 0];
-    for (let v = 0; v < PV; v++) for (let u = 0; u < PU; u++) {
-      const y0 = -PLY + 2 * PLY * u / PU, y1 = -PLY + 2 * PLY * (u + 1) / PU, z0 = PLZ0 + (PLZ1 - PLZ0) * v / PV, z1 = PLZ0 + (PLZ1 - PLZ0) * (v + 1) / PV;
-      const w = 0.25 * (planeW[v * (PU + 1) + u] + planeW[v * (PU + 1) + u + 1] + planeW[(v + 1) * (PU + 1) + u] + planeW[(v + 1) * (PU + 1) + u + 1]);
-      const t = 0.5 + 0.5 * clamp(w / 0.45, -1, 1), i = (t * 255) | 0;
-      proj(x, y0, z0, pa); proj(x, y1, z0, pb); proj(x, y1, z1, pc); proj(x, y0, z1, pd);
-      ctx.fillStyle = 'rgba(' + LUT_DIV[3 * i] + ',' + LUT_DIV[3 * i + 1] + ',' + LUT_DIV[3 * i + 2] + ',.62)'; ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.lineTo(pc[0], pc[1]); ctx.lineTo(pd[0], pd[1]); ctx.closePath(); ctx.fill();
+    if (!S.plane) return; const X = S.planeX + 0.4, pa = [0, 0, 0];
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, behind = false;
+    for (const [yy, zz] of [[-PLY, PLZ0], [PLY, PLZ0], [PLY, PLZ1], [-PLY, PLZ1]]) { const zc = proj(X, yy, zz, pa); if (zc < 0.3) behind = true; x0 = Math.min(x0, pa[0]); x1 = Math.max(x1, pa[0]); y0 = Math.min(y0, pa[1]); y1 = Math.max(y1, pa[1]); }
+    if (behind) return;
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(cssW, Math.ceil(x1)); y1 = Math.min(cssH, Math.ceil(y1)); if (x1 - x0 < 4 || y1 - y0 < 4) return;
+    const st = 2, bw = Math.ceil((x1 - x0) / st), bh = Math.ceil((y1 - y0) / st);
+    if (!planeImg || planeBW !== bw || planeBH !== bh) { planeCv.width = bw; planeCv.height = bh; planeImg = planeCtx.createImageData(bw, bh); planeBW = bw; planeBH = bh; }
+    const d = planeImg.data, fx = CP.fx, fy = CP.fy, fz = CP.fz, W1 = PU + 1;
+    for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) {
+      const o = 4 * (j * bw + i), sx = x0 + (i + 0.5) * st, sy = y0 + (j + 0.5) * st, aa = (sx - CP.cx) / CP.F, bb = (CP.cy - sy) / CP.F;
+      const dx = fx + aa * CP.rx + bb * CP.ux, dy = fy + aa * CP.ry + bb * CP.uy, dz = fz + aa * CP.rz + bb * CP.uz;
+      if (Math.abs(dx) < 1e-6) { d[o + 3] = 0; continue; }
+      const t = (X - CP.ex) / dx; if (t <= 0) { d[o + 3] = 0; continue; }
+      const y = CP.ey + t * dy, z = CP.ez + t * dz;
+      if (y < -PLY || y > PLY || z < PLZ0 || z > PLZ1) { d[o + 3] = 0; continue; }
+      const u = (y + PLY) / (2 * PLY) * PU, v = (z - PLZ0) / (PLZ1 - PLZ0) * PV, iu = Math.min(PU - 1, u | 0), iv = Math.min(PV - 1, v | 0), fu = u - iu, fv = v - iv;
+      const w = (planeW[iv * W1 + iu] * (1 - fu) + planeW[iv * W1 + iu + 1] * fu) * (1 - fv) + (planeW[(iv + 1) * W1 + iu] * (1 - fu) + planeW[(iv + 1) * W1 + iu + 1] * fu) * fv;
+      const tt = 0.5 + 0.5 * clamp(w / 0.45, -1, 1), k = (tt * 255) | 0;
+      d[o] = LUT_DIV[3 * k]; d[o + 1] = LUT_DIV[3 * k + 1]; d[o + 2] = LUT_DIV[3 * k + 2]; d[o + 3] = 170;
     }
-    proj(x, -PLY, PLZ0, pa); ctx.fillStyle = 'rgba(190,210,230,.85)'; ctx.font = '11px ui-monospace,Menlo,monospace'; ctx.fillText('plane: vertical velocity w/V∞ (blue = down, red = up)', pa[0], pa[1] + 14);
+    planeCtx.putImageData(planeImg, 0, 0); ctx.imageSmoothingEnabled = true; ctx.drawImage(planeCv, x0, y0, bw * st, bh * st);
+    proj(X, -PLY, PLZ0, pa); ctx.fillStyle = 'rgba(190,210,230,.85)'; ctx.font = '11px ui-monospace,Menlo,monospace'; ctx.fillText('plane: vertical velocity w/V∞ (blue = down, red = up)', Math.max(8, pa[0]), Math.min(cssH - 24, pa[1] + 14));
   }
   let tAnim = 0;
   function render() {
@@ -798,7 +820,7 @@ function main() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#090d13'; ctx.fillRect(0, 0, cssW, cssH);
     drawGrid(); drawArrow();
     proj(0.6, 0, 0, a3); wingDepth = a3[2];
-    drawStreams(0); drawParticles(0); drawWake(); drawTipCores(); drawPlane(); drawWing(); drawSepLine(); drawTufts(tAnim); drawParticles(1); drawStreams(1);
+    drawStreams(0); drawParticles(0); drawWake(); drawTipCores(); const planeFront = S.plane && planeDepthOf() < wingDepth; if (!planeFront) drawPlane(); drawWing(); if (planeFront) drawPlane(); drawSepLine(); drawTufts(tAnim); drawParticles(1); drawStreams(1);
     ctx.fillStyle = 'rgba(160,190,220,.7)'; ctx.font = '11px ui-monospace,Menlo,monospace';
     ctx.fillText('drag: orbit · pinch / wheel: zoom · double-tap: reset view', 10, cssH - 10);
   }
@@ -929,7 +951,7 @@ function main() {
       if (tier.K <= 16 || fr % 2 === 0) { wake.step(W, SOL.G, turbEdges()); wake.buildSegs(W, SOL.G, 3); }
       updateParticles();
       if (S.streams && ++streamAge > 50) buildStreams();
-      if (S.plane && ++planeAge > 6) updatePlane();
+      if (S.plane && ++planeAge > 8) updatePlane();
     }
     if (S.spin && !ptrs.size) cam.az += 0.004;
     render(); drawPlot();
@@ -943,9 +965,22 @@ function main() {
   const turbBuf = new Float64Array(64);
   function turbEdges() { const K = W.K; for (let e = 0; e <= K; e++) { const a = e > 0 ? SOL.sepS[e - 1] : 0, b = e < K ? SOL.sepS[e] : 0; turbBuf[e] = Math.max(a, b); } return turbBuf; }
 
+  async function installHelp() {
+    const lines = [], ok = (c, t) => lines.push((c ? '✔ ' : '✘ ') + t);
+    ok(window.isSecureContext, 'secure (https) page: ' + location.protocol + '//' + location.host);
+    ok(matchMedia('(display-mode: standalone)').matches, 'already running as an installed app (✘ is normal in a browser tab)');
+    for (const f of ['manifest.json', 'sw.js', 'icon-192.png', 'icon-512.png']) { try { const r = await fetch(f, { cache: 'no-store' }); ok(r.ok, f + ' → HTTP ' + r.status); } catch (e) { ok(false, f + ' → not reachable'); } }
+    try { const regs = await navigator.serviceWorker.getRegistrations(); ok(regs.length > 0, 'service worker registered (' + regs.length + ')'); } catch (e) { ok(false, 'service worker not supported'); }
+    ok(!!installEvt, 'Chrome has offered the install prompt (✘ if the app is already installed, or this is a private tab)');
+    lines.push('', 'If every file is ✔ but the button is missing: Chrome menu ⋮ → "Add to Home screen" → "Install". Private tabs and Chrome opened inside other apps cannot install. If you installed this app before, uninstall it, reload, and try again.');
+    $('diagText').textContent = lines.join('\n'); $('diag').classList.add('on');
+  }
+  $('installHelp').onclick = installHelp; $('diagClose').onclick = () => $('diag').classList.remove('on');
+  let installEvt = null;
   function setupPWA() {
     let deferred = null;
-    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('install').style.display = 'block'; });
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; installEvt = e; $('install').style.display = 'block'; });
+    window.addEventListener('appinstalled', () => { $('install').style.display = 'none'; installEvt = null; });
     $('install').onclick = () => { if (deferred) { deferred.prompt(); deferred = null; $('install').style.display = 'none'; } };
     if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
     try { if (screen.orientation && screen.orientation.lock && matchMedia('(display-mode: standalone)').matches) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}

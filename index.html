@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a0e14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AeroLab 3D">
+<title>AeroLab 3D · Finite Wing</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<!-- PWA: index.html + manifest.json + sw.js + icon-192.png + icon-512.png in one GitHub Pages folder. Bump CACHE in sw.js when you upload a new version. -->
+<style>
+:root{
+  --bg:#0a0e14; --panel:#10161f; --panel2:#151d29; --line:#243042;
+  --txt:#d6e2f0; --dim:#7f93aa; --acc:#4cc9f0; --acc2:#ffb347; --bad:#ff6b6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+  font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+#app{display:flex;height:100%;width:100%;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+/* ---------- control panel (left) ---------- */
+#panel{flex:0 0 clamp(232px,25vw,296px);background:var(--panel);border-right:1px solid var(--line);
+  overflow-y:auto;padding:10px 12px 18px;display:block;-webkit-overflow-scrolling:touch}
+#panel.hidden{display:none}
+#panel h1{font-size:15px;margin:0 0 2px;letter-spacing:.04em}
+#panel h1 span{color:var(--acc)}
+#panel .sub{color:var(--dim);font-size:11px;margin-bottom:8px}
+.sec{border-top:1px solid var(--line);padding:8px 0 4px;margin-top:6px}
+.sec>h2{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 6px;font-weight:600}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0 2px;color:var(--txt)}
+label b{color:var(--acc);font-variant-numeric:tabular-nums;font-weight:600}
+select,button{width:100%;background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+  border-radius:6px;padding:6px 8px;font:inherit}
+select:focus,button:focus-visible,input:focus-visible{outline:1px solid var(--acc)}
+button{cursor:pointer;touch-action:manipulation}
+button:active{background:#1d2a3b}
+input[type=range]{width:100%;margin:2px 0 4px;accent-color:var(--acc);height:22px}
+.row{display:flex;gap:6px;margin-top:5px}
+.row>button{padding:5px 2px;font-size:12px}
+.chk{display:flex;align-items:center;gap:8px;justify-content:flex-start;margin:4px 0;cursor:pointer}
+.chk input{width:16px;height:16px;accent-color:var(--acc)}
+#customBox{display:none;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px 2px;margin-top:6px}
+#install{display:none;border-color:var(--acc);color:var(--acc)}
+.note{color:var(--dim);font-size:10.5px;margin-top:6px}
+/* ---------- stage (right) ---------- */
+#stage{position:relative;flex:1;min-width:0;background:#090d13;overflow:hidden}
+#stage canvas.fill{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+#base{touch-action:none;cursor:grab}
+#menuBtn{position:absolute;left:8px;top:8px;width:38px;height:34px;padding:0;font-size:18px;
+  background:rgba(16,22,31,.82);backdrop-filter:blur(4px);z-index:5}
+#hud{position:absolute;right:8px;top:8px;z-index:4;min-width:196px;max-width:260px;
+  background:rgba(12,17,25,.78);backdrop-filter:blur(6px);border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;pointer-events:none}
+#hud .g{display:grid;grid-template-columns:auto 1fr;gap:0 10px}
+#hud .k{color:var(--dim)} #hud .v{text-align:right;color:var(--txt);font-variant-numeric:tabular-nums}
+#hud .v.big{color:var(--acc);font-weight:700}
+#hud .v.th{color:var(--acc2)}
+#hud hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+#hud .tag{color:var(--dim);font-size:10.5px;line-height:1.3;margin-top:3px}
+#legend{position:absolute;left:8px;bottom:8px;z-index:4;background:rgba(12,17,25,.78);backdrop-filter:blur(6px);
+  border:1px solid var(--line);border-radius:8px;padding:5px 8px;pointer-events:none;font:11px ui-monospace,Menlo,Consolas,monospace}
+#legend canvas{position:static;width:150px;height:10px;display:block;border-radius:3px;margin:3px 0}
+#legend .lb{display:flex;justify-content:space-between;color:var(--dim)}
+#hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;pointer-events:none;
+  background:rgba(12,17,25,.8);border:1px solid var(--line);border-radius:20px;padding:5px 14px;color:var(--dim);
+  transition:opacity 1s;font-size:12px;white-space:nowrap}
+/* ---------- portrait helper ---------- */
+#rotate{display:none;position:fixed;inset:0;z-index:50;background:rgba(6,9,14,.96);align-items:center;justify-content:center;
+  flex-direction:column;text-align:center;padding:30px;gap:14px}
+#rotate .ic{font-size:54px;animation:rot 2.4s ease-in-out infinite}
+#rotate button{width:auto;padding:8px 18px}
+@keyframes rot{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+@media (orientation:portrait) and (max-width:820px){ #rotate.on{display:flex} }
+@media (max-height:430px){
+  #hud{font-size:11px;padding:5px 8px;min-width:170px} #panel{padding:6px 10px 12px}
+  .sec{padding-top:5px;margin-top:4px}
+}
+
+.sbtn{position:absolute;top:8px;width:38px;height:34px;padding:0;font-size:16px;background:rgba(16,22,31,.82);backdrop-filter:blur(4px);z-index:5}
+#menuBtn{left:8px} #hudBtn{left:52px} #plotBtn{left:96px}
+#hud{min-width:228px;max-width:280px}
+#hud.off{display:none}
+#hud .g3{display:grid;grid-template-columns:auto 1fr 1fr;gap:0 8px}
+#hud .v.hd{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+#hud .reg{color:var(--acc);font-size:11px;line-height:1.3;margin-top:2px;font-weight:600}
+#plotWrap{position:absolute;right:8px;bottom:8px;z-index:4;background:rgba(12,17,25,.8);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:8px;padding:4px;display:none}
+#plotWrap.on{display:block}
+#plot{display:block;width:260px;height:112px;cursor:pointer;position:static}
+.row3{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}.row3>button{flex:1 1 30%;padding:5px 2px;font-size:12px}
+#hud.off{display:none}
+@media (max-height:430px){#plot{width:230px;height:96px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>AERO<span>LAB</span> 3D · Finite Wing</h1>
+    <div class="sub">3-D lifting-surface + free-vortex wake · tip vortices, stall, separation</div>
+
+    <div class="sec">
+      <h2>Wing planform</h2>
+      <div class="row3"><button data-plan="rect">Rectangular</button><button data-plan="taper">Tapered</button><button data-plan="swept">Swept</button><button data-plan="ell">Elliptical</button><button data-plan="glider">Glider</button><button data-plan="low">Low AR</button></div>
+      <label>Aspect ratio AR <b id="arV">8.0</b></label><input id="ar" type="range" min="2" max="18" step="0.5" value="8">
+      <label>Taper ratio (tip / root) <b id="trV">0.50</b></label><input id="taper" type="range" min="0.2" max="1" step="0.05" value="0.5">
+      <label>Sweep (¼-chord) <b id="swV">15°</b></label><input id="sweep" type="range" min="-20" max="45" step="1" value="15">
+      <label>Dihedral <b id="diV">3°</b></label><input id="dih" type="range" min="-10" max="15" step="1" value="3">
+      <label>Tip twist (− = washout) <b id="twV">-2.0°</b></label><input id="twist" type="range" min="-8" max="4" step="0.5" value="-2">
+      <label>Span <b id="spV">10 m</b></label><input id="span" type="range" min="1" max="40" step="1" value="10">
+    </div>
+
+    <div class="sec">
+      <h2>Airfoil section</h2>
+      <select id="foil">
+        <option value="naca0012">NACA 0012 (symmetric)</option>
+        <option value="naca2412" selected>NACA 2412 (cambered)</option>
+        <option value="naca4412">NACA 4412 (high-lift)</option>
+        <option value="plate">Flat plate (3 % thick)</option>
+        <option value="custom">Custom NACA 4-digit…</option>
+      </select>
+      <div id="customBox">
+        <label>Max camber m <b id="cmV">4 %</b></label><input id="cm" type="range" min="0" max="9" step="1" value="4">
+        <label>Camber position p <b id="cpV">0.4</b></label><input id="cp" type="range" min="2" max="8" step="1" value="4">
+        <label>Thickness t <b id="ctV">12 %</b></label><input id="ct" type="range" min="4" max="24" step="1" value="12">
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>Angle of attack</h2>
+      <label>α <b id="aoaV">8.0°</b></label><input id="aoa" type="range" min="-10" max="30" step="0.5" value="8">
+      <div class="row"><button data-aoa="0">0°</button><button data-aoa="5">5°</button><button data-aoa="12">12°</button><button data-aoa="16">16°</button><button data-aoa="22">22°</button></div>
+      <div class="note">Push α past ≈15° to watch the flow separate: tapered / swept wings stall at the tips first.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Free-stream</h2>
+      <label>Speed V∞ <b id="vV">70 m/s</b></label><input id="vel" type="range" min="10" max="230" step="5" value="70">
+      <div class="row"><button data-v="30">30</button><button data-v="70">70</button><button data-v="120">120</button><button data-v="200">200</button></div>
+    </div>
+
+    <div class="sec">
+      <h2>Visualisation</h2>
+      <label>Surface overlay</label>
+      <select id="overlay"><option value="cp" selected>Surface pressure (Cp)</option><option value="sep">Flow separation</option><option value="loading">Section lift (cl)</option><option value="none">None</option></select>
+      <label>Tracers</label>
+      <select id="tracer"><option value="smoke" selected>Smoke filaments</option><option value="path">Particle pathlines</option><option value="off">Off</option></select>
+      <label class="chk"><input id="wakeOn" type="checkbox" checked> Vortex wake / tip vortices</label>
+      <label class="chk"><input id="planeOn" type="checkbox"> Wake cross-section (w / V∞)</label>
+      <label>Plane position behind wing <b id="pxV">1.2</b></label><input id="planeX" type="range" min="0.2" max="4" step="0.1" value="1.2">
+      <label class="chk"><input id="stream" type="checkbox"> Streamlines</label>
+      <label class="chk"><input id="tufts" type="checkbox" checked> Surface tufts</label>
+      <label class="chk"><input id="sepLine" type="checkbox" checked> Separation line</label>
+      <label class="chk"><input id="grid" type="checkbox" checked> Floor grid</label>
+      <label class="chk"><input id="spin" type="checkbox"> Auto-rotate camera</label>
+      <div class="row3"><button data-view="iso">Iso</button><button data-view="top">Top</button><button data-view="side">Side</button><button data-view="rear">Rear</button><button data-view="front">Front</button></div>
+    </div>
+
+    <div class="sec">
+      <h2>Solver / performance</h2>
+      <label>Quality</label>
+      <select id="quality"><option value="auto" selected>Auto (hold 60 FPS)</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option><option value="3">Ultra</option></select>
+      <div class="row"><button id="pause">⏸ Pause</button><button id="reset">↺ Reset wake</button></div>
+      <div class="row"><button id="full">⛶ Fullscreen</button><button id="install">⬇ Install app</button></div>
+    </div>
+    <div class="note">Educational model: Weissinger-type lifting-surface solver with a nonlinear stall curve, a rolling-up free-vortex wake and empirical separation. Not a full 3-D Navier–Stokes solution; valid for M &lt; 0.7.</div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="base" class="fill"></canvas>
+    <button id="menuBtn" class="sbtn" title="Toggle controls">☰</button>
+    <button id="hudBtn" class="sbtn" title="Toggle readouts">📋</button>
+    <button id="plotBtn" class="sbtn" title="Toggle span-load plot">📈</button>
+    <div id="hud">
+      <div class="g">
+        <span class="k">α</span><span class="v big" id="hAoa">–</span>
+        <span class="k">Mach · V∞</span><span class="v" id="hMach">–</span>
+        <span class="k"> </span><span class="v" id="hV">–</span>
+        <span class="k">AR · area</span><span class="v" id="hAR">–</span>
+      </div><hr>
+      <div class="g3">
+        <span></span><span class="v hd">sim</span><span class="v hd">theory</span>
+        <span class="k">CL</span><span class="v big" id="hCl">–</span><span class="v th" id="hThCl">–</span>
+        <span class="k">C<sub>Di</sub></span><span class="v" id="hCdi">–</span><span class="v th" id="hThCdi">–</span>
+      </div>
+      <div class="g">
+        <span class="k">C<sub>D</sub> total</span><span class="v" id="hCd">–</span>
+        <span class="k">L/D</span><span class="v" id="hLD">–</span>
+        <span class="k">span eff. e</span><span class="v" id="hE">–</span>
+        <span class="k">Lift</span><span class="v" id="hL">–</span>
+        <span class="k">Drag</span><span class="v" id="hD">–</span>
+      </div><hr>
+      <div class="reg" id="hReg">–</div>
+      <div class="tag" id="hGrid">–</div>
+    </div>
+    <div id="legend"><div id="lgTitle">Cp</div><canvas id="lgBar" width="128" height="1"></canvas><div class="lb"><span id="lgA"></span><span id="lgB"></span><span id="lgC"></span></div></div>
+    <div id="plotWrap"><canvas id="plot"></canvas></div>
+    <div id="hint">Drag to orbit · pinch / wheel to zoom · ↑/↓ change α · Space pauses</div>
+  </main>
+</div>
+
+<div id="rotate" class="on">
+  <div class="ic">📱</div>
+  <div><b>Rotate to landscape</b><br><span style="color:var(--dim)">The 3D wing tunnel is designed for a wide screen.</span></div>
+  <button id="rotOk">Continue anyway</button>
+</div>
+
+<script>
+'use strict';
+/* =============================================================================
+   AeroLab 3D - finite-wing test section
+   Model  : (1) Weissinger-type lifting-surface: one horseshoe vortex per spanwise strip
+                (bound at c/4, control point at 3c/4, trailing legs to infinity), solved
+                with a Levenberg-Marquardt iteration so each strip follows the nonlinear
+                section lift curve (AeroLab's stall expression) -> tip/root stall, CL(alpha).
+            (2) Free-vortex wake: trailing filaments are time-marched under their own
+                induced velocity (Biot-Savart, finite core) -> tip-vortex roll-up.
+            (3) Tracers: freestream + induced velocity of bound/wake vortices; wing section
+                blocks the particles; separated regions get turbulent recirculation.
+            (4) Separation: TE separation point x_sep/c = 1 - 0.85 s(alpha_eff).
+   Units  : semi-span = 1, V_inf = 1 (non-dimensional); forces are scaled by q, S.
+   ============================================================================= */
+const PI = Math.PI, DEG = PI / 180;
+const clamp = (x, a, b) => x < a ? a : (x > b ? b : x);
+const sstep = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+const RHO_AIR = 1.225, A_SOUND = 340.3;
+
+/* ---------------- 1. airfoil sections (same NACA 4-digit expressions as AeroLab) ---------------- */
+function foilSection(key, c) {
+  let m = 0, p = 0.4, t = 0.12, plate = false;
+  if (key === 'naca2412') m = 0.02; else if (key === 'naca4412') m = 0.04;
+  else if (key === 'plate') { plate = true; t = 0.03; }
+  else if (key === 'custom') { m = c.m / 100; p = c.p / 10; t = c.t / 100; }
+  const yt = plate ? (x => 0.015 * Math.min(1, Math.sqrt(x / 0.03) + 0.0) * (x > 0.97 ? Math.max(0, (1 - x) / 0.03) : 1))
+    : (x => 5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * x * x + 0.2843 * x * x * x - 0.1036 * x * x * x * x));
+  const yc = x => (m === 0 || plate) ? 0 : (x < p ? m / (p * p) * (2 * p * x - x * x) : m / ((1 - p) * (1 - p)) * ((1 - 2 * p) + 2 * p * x - x * x));
+  const dyc = x => (m === 0 || plate) ? 0 : (x < p ? 2 * m / (p * p) * (p - x) : 2 * m / ((1 - p) * (1 - p)) * (p - x));
+  let a0 = 0; const M = 200;
+  for (let k = 0; k < M; k++) { const th = PI * (k + 0.5) / M, x = 0.5 * (1 - Math.cos(th)); a0 += -(1 / PI) * dyc(x) * (Math.cos(th) - 1) * (PI / M); }
+  return { yt, yc, dyc, a0, tc: plate ? 0.03 : t, stall: plate ? 9 : 15, name: key };
+}
+/* stall state: 0 attached ... 1 fully stalled (AeroLab expression) */
+function stallState(aDeg, foil) {
+  const over = aDeg >= 0 ? aDeg - foil.stall : -aDeg - (foil.stall - 2), x = clamp(over / 8, 0, 1);
+  return x * x * (3 - 2 * x);
+}
+
+/* ---------------- 2. Biot-Savart primitives (unit circulation) ---------------- */
+const vo = [0, 0, 0];
+function segBS(px, py, pz, ax, ay, az, bx, by, bz, e2, g, out) {
+  const r1x = px - ax, r1y = py - ay, r1z = pz - az, r2x = px - bx, r2y = py - by, r2z = pz - bz;
+  const cx = r1y * r2z - r1z * r2y, cy = r1z * r2x - r1x * r2z, cz = r1x * r2y - r1y * r2x;
+  const cn2 = cx * cx + cy * cy + cz * cz + e2, n1 = Math.sqrt(r1x * r1x + r1y * r1y + r1z * r1z) + 1e-9, n2 = Math.sqrt(r2x * r2x + r2y * r2y + r2z * r2z) + 1e-9;
+  const r0x = bx - ax, r0y = by - ay, r0z = bz - az;
+  const f = g * (r0x * (r1x / n1 - r2x / n2) + r0y * (r1y / n1 - r2y / n2) + r0z * (r1z / n1 - r2z / n2)) / (4 * PI * cn2);
+  out[0] += cx * f; out[1] += cy * f; out[2] += cz * f;
+}
+function semiBS(px, py, pz, ax, ay, az, g, e2, out) {          // from A along +x to infinity
+  const r1x = px - ax, r1y = py - ay, r1z = pz - az;
+  // d = (1,0,0): d x r1 = (0, -r1z, r1y)
+  const cy = -r1z, cz = r1y, cn2 = cy * cy + cz * cz + e2, n1 = Math.sqrt(r1x * r1x + r1y * r1y + r1z * r1z) + 1e-9;
+  const f = g * (1 + r1x / n1) / (4 * PI * cn2);
+  out[1] += cy * f; out[2] += cz * f;
+}
+
+/* ---------------- 3. wing geometry ---------------- */
+function makeWing(P) {
+  const s = 1, b = 2, K = P.K, foil = P.foilObj;
+  const cm = b / P.AR, lam = P.taper, ell = !!P.ell;
+  const cr = ell ? 4 * cm / PI : cm * 2 / (1 + lam);
+  const chord = y => { const r = Math.abs(y) / s; return ell ? Math.max(0.03 * cr, cr * Math.sqrt(Math.max(0, 1 - r * r))) : cr * (1 - (1 - lam) * r); };
+  const tanL = Math.tan(P.sweep * DEG), tanD = Math.tan(P.dih * DEG), al = P.aoa * DEG;
+  const twist = y => P.twist * DEG * Math.abs(y) / s;
+  const W = { P, K, s, b, AR: P.AR, S: b * b / P.AR, cr, chord, twist, al, foil, tanL, tanD };
+  W.pt = (y, xi, off, out) => {                       // world point at span y, chord fraction xi, offset along the section normal (in chords)
+    const c = chord(y), a = al + twist(y), ay = Math.abs(y), xq = ay * tanL, zq = ay * tanD;
+    const X = xq * Math.cos(al) + zq * Math.sin(al), Z = zq * Math.cos(al) - xq * Math.sin(al);
+    const dx = Math.cos(a), dz = -Math.sin(a), nx = Math.sin(a), nz = Math.cos(a), o = (xi - 0.25) * c;
+    out[0] = X + o * dx + off * c * nx; out[1] = y; out[2] = Z + o * dz + off * c * nz; return out;
+  };
+  W.ye = new Float64Array(K + 1); for (let e = 0; e <= K; e++) W.ye[e] = -s * Math.cos(PI * e / K);
+  W.yk = new Float64Array(K); W.dy = new Float64Array(K); W.ck = new Float64Array(K);
+  for (let k = 0; k < K; k++) { W.yk[k] = 0.5 * (W.ye[k] + W.ye[k + 1]); W.dy[k] = W.ye[k + 1] - W.ye[k]; W.ck[k] = chord(W.yk[k]); }
+  const t3 = [0, 0, 0];
+  W.Q = new Float64Array(3 * (K + 1)); W.T = new Float64Array(3 * (K + 1)); W.C = new Float64Array(3 * K);
+  for (let e = 0; e <= K; e++) { W.pt(W.ye[e], 0.25, 0, t3); W.Q.set(t3, 3 * e); W.pt(W.ye[e], 1, 0, t3); W.T.set(t3, 3 * e); }
+  for (let k = 0; k < K; k++) { W.pt(W.yk[k], 0.75, 0, t3); W.C.set(t3, 3 * k); }
+  // effective normals (incidence measured from the zero-lift line)
+  W.nrm = new Float64Array(3 * K); W.aGeo = new Float64Array(K);
+  for (let k = 0; k < K; k++) {
+    const ae = al + twist(W.yk[k]) - foil.a0, dx = Math.cos(ae), dz = -Math.sin(ae);
+    let tx = W.Q[3 * (k + 1)] - W.Q[3 * k], ty = W.Q[3 * (k + 1) + 1] - W.Q[3 * k + 1], tz = W.Q[3 * (k + 1) + 2] - W.Q[3 * k + 2];
+    const tl = Math.hypot(tx, ty, tz); tx /= tl; ty /= tl; tz /= tl;
+    // n = d x t, d = (dx,0,dz)
+    let nx = 0 * tz - dz * ty, ny = dz * tx - dx * tz, nz = dx * ty - 0 * tx; const nl = Math.hypot(nx, ny, nz);
+    nx /= nl; ny /= nl; nz /= nl; W.nrm[3 * k] = nx; W.nrm[3 * k + 1] = ny; W.nrm[3 * k + 2] = nz; W.aGeo[k] = nx;      // V_inf = (1,0,0)
+  }
+  return W;
+}
+
+/* ---------------- 4. lifting-surface solve with stall (Weissinger-type horseshoes + nonlinear section lift) ---------------- */
+function solveWing(W, M) {
+  const K = W.K, A = new Float64Array(K * K), out = [0, 0, 0], e2 = 1e-6, Q = W.Q, T = W.T, nr = W.nrm;
+  for (let i = 0; i < K; i++) {
+    const px = W.C[3 * i], py = W.C[3 * i + 1], pz = W.C[3 * i + 2];
+    for (let j = 0; j < K; j++) {
+      out[0] = out[1] = out[2] = 0;
+      segBS(px, py, pz, Q[3 * j], Q[3 * j + 1], Q[3 * j + 2], Q[3 * j + 3], Q[3 * j + 4], Q[3 * j + 5], e2, 1, out);               // bound
+      segBS(px, py, pz, Q[3 * j + 3], Q[3 * j + 4], Q[3 * j + 5], T[3 * j + 3], T[3 * j + 4], T[3 * j + 5], e2, 1, out);           // right leg Q->T
+      semiBS(px, py, pz, T[3 * j + 3], T[3 * j + 4], T[3 * j + 5], 1, e2, out);
+      segBS(px, py, pz, T[3 * j], T[3 * j + 1], T[3 * j + 2], Q[3 * j], Q[3 * j + 1], Q[3 * j + 2], e2, 1, out);                   // left leg T->Q
+      semiBS(px, py, pz, T[3 * j], T[3 * j + 1], T[3 * j + 2], -1, e2, out);
+      A[i * K + j] = out[0] * nr[3 * i] + out[1] * nr[3 * i + 1] + out[2] * nr[3 * i + 2];
+    }
+  }
+  // linear solve  A G = -aGeo
+  const a = new Float64Array(K * (K + 1));
+  for (let i = 0; i < K; i++) { for (let j = 0; j < K; j++) a[i * (K + 1) + j] = A[i * K + j]; a[i * (K + 1) + K] = -W.aGeo[i]; }
+  for (let c = 0; c < K; c++) {
+    let pv = c; for (let r = c + 1; r < K; r++) if (Math.abs(a[r * (K + 1) + c]) > Math.abs(a[pv * (K + 1) + c])) pv = r;
+    if (pv !== c) for (let q = 0; q < K + 1; q++) { const t = a[c * (K + 1) + q]; a[c * (K + 1) + q] = a[pv * (K + 1) + q]; a[pv * (K + 1) + q] = t; }
+    const d = a[c * (K + 1) + c];
+    for (let r = c + 1; r < K; r++) { const f = a[r * (K + 1) + c] / d; if (f) for (let q = c; q < K + 1; q++) a[r * (K + 1) + q] -= f * a[c * (K + 1) + q]; }
+  }
+  const G = new Float64Array(K);
+  for (let i = K - 1; i >= 0; i--) { let sum = a[i * (K + 1) + K]; for (let j = i + 1; j < K; j++) sum -= a[i * (K + 1) + j] * G[j]; G[i] = sum / a[i * (K + 1) + i]; }
+  // nonlinear sectional lift: Gamma = 1/2 c cl(alpha_eff), relaxed fixed point
+  const beta = Math.sqrt(Math.max(0.2, 1 - M * M)), foil = W.foil, res = { G, A };
+  const cl = new Float64Array(K), aeff = new Float64Array(K), post = new Float64Array(K), aind = new Float64Array(K), sepS = new Float64Array(K), wn = new Float64Array(K);
+  const clOf = ae => { const ps = stallState((ae + foil.a0) / DEG, foil); return 2 * PI * 0.92 / beta * ae * (1 - 0.65 * ps); };
+  const resid = (G, R, J) => {                      // R_i = G_i - 1/2 c cl(alpha_eff_i);  J = dR/dG
+    let nrm = 0;
+    for (let i = 0; i < K; i++) {
+      let s = 0; for (let j = 0; j < K; j++) s += A[i * K + j] * G[j];
+      const ae = W.aGeo[i] + s + G[i] / (PI * W.ck[i]);
+      R[i] = G[i] - 0.5 * W.ck[i] * clOf(ae); nrm += R[i] * R[i];
+      if (J) { const h = 1e-4, d = 0.5 * W.ck[i] * (clOf(ae + h) - clOf(ae - h)) / (2 * h); for (let j = 0; j < K; j++) J[i * K + j] = -d * A[i * K + j]; J[i * K + i] += 1 - d / (PI * W.ck[i]); }
+    }
+    return nrm;
+  };
+  let it = 0, err = 0, lam = 1e-3; const R = new Float64Array(K), R2 = new Float64Array(K), J = new Float64Array(K * K), H = new Float64Array(K * (K + 1)), Gt = new Float64Array(K);
+  let f0 = resid(G, R, J);
+  for (it = 0; it < 60 && f0 > 1e-14; it++) {
+    for (let i = 0; i < K; i++) { for (let j = 0; j < K; j++) { let s = 0; for (let q = 0; q < K; q++) s += J[q * K + i] * J[q * K + j]; H[i * (K + 1) + j] = s + (i === j ? lam : 0); } let g = 0; for (let q = 0; q < K; q++) g += J[q * K + i] * R[q]; H[i * (K + 1) + K] = -g; }
+    for (let c = 0; c < K; c++) {                    // Gaussian elimination (SPD, no pivoting needed)
+      const d = H[c * (K + 1) + c];
+      for (let r = c + 1; r < K; r++) { const f = H[r * (K + 1) + c] / d; if (f) for (let q = c; q < K + 1; q++) H[r * (K + 1) + q] -= f * H[c * (K + 1) + q]; }
+    }
+    for (let i = K - 1; i >= 0; i--) { let sum = H[i * (K + 1) + K]; for (let j = i + 1; j < K; j++) sum -= H[i * (K + 1) + j] * Gt[j]; Gt[i] = sum / H[i * (K + 1) + i]; }
+    for (let i = 0; i < K; i++) Gt[i] += G[i];
+    const f1 = resid(Gt, R2, null);
+    if (f1 < f0) { G.set(Gt); lam = Math.max(1e-9, lam / 4); f0 = resid(G, R, J); } else lam = Math.min(1e6, lam * 5);
+  }
+  err = Math.sqrt(f0);
+  for (let i = 0; i < K; i++) { let s = 0; for (let j = 0; j < K; j++) s += A[i * K + j] * G[j]; wn[i] = s; }
+  let CL = 0, CDi = 0, CD0 = 0, stalled = 0, area = 0;
+  const cd0f = 0.0075 * (1 + 2 * foil.tc);
+  for (let i = 0; i < K; i++) {
+    const ae = W.aGeo[i] + (wn[i] + G[i] / (PI * W.ck[i])), aD = (ae + foil.a0) / DEG, ps = stallState(aD, foil);
+    let ai = 0; for (let e = 0; e <= K; e++) { const jump = (e < K ? G[e] : 0) - (e > 0 ? G[e - 1] : 0); ai += jump / (W.ye[e] - W.yk[i]); }
+    aeff[i] = ae; post[i] = ps; aind[i] = -ai / (4 * PI); cl[i] = 2 * G[i] / W.ck[i];
+    sepS[i] = sstep((Math.abs(aD) - (foil.stall - 5)) / 10);
+    const sa = Math.sin(aD * DEG), cdp = cd0f + 1.3 * ps * sa * sa + 0.05 * sepS[i] * sepS[i];
+    CL += 2 * G[i] * W.dy[i] / W.S; CDi += 2 * G[i] * W.dy[i] * aind[i] / W.S; CD0 += cdp * W.ck[i] * W.dy[i] / W.S;
+    if (sepS[i] > 0.5) stalled += W.dy[i]; area += W.dy[i];
+  }
+  Object.assign(res, { cl, aeff, post, aind, sepS, CL, CDi, CD0, CD: CD0 + CDi, e: CDi > 1e-6 ? CL * CL / (PI * W.AR * CDi) : 0, stalledFrac: stalled / area, iters: it, err, M });
+  return res;
+}
+/* Helmbold-Diederich finite-wing lift slope (compressible, swept) used as the "theory" reference */
+function wingTheory(W, aoaDeg, M) {
+  const beta = Math.sqrt(Math.max(0.2, 1 - M * M)), kap = 0.92, tL = Math.tan(W.P.sweep * DEG);
+  const cla = 2 * PI * W.AR / (2 + Math.sqrt(4 + (W.AR * beta / kap) ** 2 * (1 + tL * tL / (beta * beta))));
+  const CL = cla * (aoaDeg * DEG - W.foil.a0 + 0.5 * W.P.twist * DEG * 0);   // twist-free reference
+  return { CL, CDi: CL * CL / (PI * W.AR), cla };
+}
+
+/* ---------------- 5. free (rolling-up) trailing-vortex wake ---------------- */
+class Wake {
+  constructor(K, R) {
+    this.K = K; this.E = K + 1; this.R = R; const n = this.E * R;
+    this.px = new Float64Array(n); this.py = new Float64Array(n); this.pz = new Float64Array(n); this.g = new Float64Array(n);
+    this.nx = new Float64Array(n); this.ny = new Float64Array(n); this.nz = new Float64Array(n);
+    this.ready = false; this.dt = 0.1; this.eps2 = 0.045 * 0.045; this.seed = 12345;
+    this.fin = null; this.semi = null; this.nfin = 0; this.nsemi = 0;
+  }
+  rnd() { this.seed = (this.seed * 1664525 + 1013904223) >>> 0; return this.seed / 4294967296 - 0.5; }
+  filaments(G) {                       // downstream-directed filament strength at each edge
+    const K = this.K, f = new Float64Array(K + 1);
+    for (let e = 0; e <= K; e++) f[e] = (e > 0 ? G[e - 1] : 0) - (e < K ? G[e] : 0);
+    return f;
+  }
+  init(W, G, Lw) {
+    const E = this.E, R = this.R, f = this.filaments(G); this.dt = Lw / (R - 1);
+    for (let r = 0; r < R; r++) for (let e = 0; e < E; e++) { const q = r * E + e; this.px[q] = W.T[3 * e] + r * this.dt; this.py[q] = W.T[3 * e + 1]; this.pz[q] = W.T[3 * e + 2]; this.g[q] = f[e]; }
+    this.ready = true;
+  }
+  /* segment lists used for velocity evaluation. skip = row decimation (coarse list for tracers) */
+  buildSegs(W, G, skip) {
+    const K = this.K, E = this.E, R = this.R, f = this.filaments(G), rows = [];
+    for (let r = 0; r < R - 1; r += skip) rows.push(r);
+    const last = R - 1; if (rows[rows.length - 1] !== last) rows.push(last);
+    const nfin = K + E + E * (rows.length - 1), nsemi = E;
+    if (!this.fin || this.fin.length < 7 * nfin) this.fin = new Float64Array(7 * nfin);
+    if (!this.semi || this.semi.length < 4 * nsemi) this.semi = new Float64Array(4 * nsemi);
+    let n = 0; const F = this.fin;
+    const put = (ax, ay, az, bx, by, bz, g) => { F[n++] = ax; F[n++] = ay; F[n++] = az; F[n++] = bx; F[n++] = by; F[n++] = bz; F[n++] = g; };
+    const Q = W.Q, T = W.T;
+    for (let j = 0; j < K; j++) put(Q[3 * j], Q[3 * j + 1], Q[3 * j + 2], Q[3 * j + 3], Q[3 * j + 4], Q[3 * j + 5], G[j]);
+    for (let e = 0; e < E; e++) put(Q[3 * e], Q[3 * e + 1], Q[3 * e + 2], T[3 * e], T[3 * e + 1], T[3 * e + 2], f[e]);
+    for (let q = 0; q < rows.length - 1; q++) {
+      const r0 = rows[q], r1 = rows[q + 1];
+      for (let e = 0; e < E; e++) { const a = r0 * E + e, b = r1 * E + e; put(this.px[a], this.py[a], this.pz[a], this.px[b], this.py[b], this.pz[b], this.g[a]); }
+    }
+    const S = this.semi; for (let e = 0; e < E; e++) { const a = last * E + e; S[4 * e] = this.px[a]; S[4 * e + 1] = this.py[a]; S[4 * e + 2] = this.pz[a]; S[4 * e + 3] = this.g[a]; }
+    this.nfin = n / 7; this.nsemi = nsemi;
+  }
+  induced(px, py, pz, e2, out) {
+    const F = this.fin, S = this.semi; out[0] = out[1] = out[2] = 0;
+    for (let q = 0, n = this.nfin; q < n; q++) { const o = 7 * q; segBS(px, py, pz, F[o], F[o + 1], F[o + 2], F[o + 3], F[o + 4], F[o + 5], e2, F[o + 6], out); }
+    for (let q = 0, n = this.nsemi; q < n; q++) semiBS(px, py, pz, S[4 * q], S[4 * q + 1], S[4 * q + 2], S[4 * q + 3], e2, out);
+  }
+  /* advance the wake by one time step; turbE[e] in 0..1 adds turbulent jitter behind stalled strips */
+  step(W, G, turbE) {
+    const E = this.E, R = this.R, out = [0, 0, 0], f = this.filaments(G); this.buildSegs(W, G, this.skip || 1);
+    const dt = this.dt;
+    for (let r = 0; r < R - 1; r++) for (let e = 0; e < E; e++) {
+      const q = r * E + e; this.induced(this.px[q], this.py[q], this.pz[q], this.eps2, out);
+      let ux = 1 + out[0], uy = out[1], uz = out[2];
+      if (turbE && r > 1) { const t = turbE[e] * 0.5 * Math.min(1, r / 6); ux += this.rnd() * t * 0.5; uy += this.rnd() * t * 1.2; uz += this.rnd() * t * 1.2; }
+      this.nx[q] = this.px[q] + ux * dt; this.ny[q] = this.py[q] + uy * dt; this.nz[q] = this.pz[q] + uz * dt;
+    }
+    for (let r = R - 1; r >= 1; r--) for (let e = 0; e < E; e++) { const q = r * E + e, p = (r - 1) * E + e; this.px[q] = this.nx[p]; this.py[q] = this.ny[p]; this.pz[q] = this.nz[p]; this.g[q] = this.g[p]; }
+    for (let e = 0; e < E; e++) { this.px[e] = W.T[3 * e]; this.py[e] = W.T[3 * e + 1]; this.pz[e] = W.T[3 * e + 2]; this.g[e] = f[e]; }
+  }
+}
+
+/* ---------------- colour maps ---------------- */
+function makeLUT(stops) {
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let k = 0;
+    while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+    const a = stops[k], b = stops[k + 1], f = clamp((t - a[0]) / (b[0] - a[0]), 0, 1);
+    lut[3 * i] = a[1] + (b[1] - a[1]) * f; lut[3 * i + 1] = a[2] + (b[2] - a[2]) * f; lut[3 * i + 2] = a[3] + (b[3] - a[3]) * f;
+  }
+  return lut;
+}
+const LUT_DIV = makeLUT([[0, 130, 240, 255], [0.15, 40, 120, 255], [0.35, 24, 56, 150], [0.5, 18, 24, 34], [0.65, 150, 28, 40], [0.85, 245, 80, 40], [1, 255, 230, 100]]);
+const LUT_SPD = makeLUT([[0, 12, 16, 46], [0.2, 32, 44, 160], [0.4, 22, 150, 205], [0.55, 40, 205, 125], [0.7, 225, 225, 55], [0.85, 252, 135, 30], [1, 255, 50, 50]]);
+const LUT_SEP = makeLUT([[0, 70, 100, 150], [0.45, 90, 130, 180], [0.55, 235, 170, 60], [1, 255, 60, 50]]);
+
+const TIERS = [
+  { K: 12, R: 22, Kv: 28, Nc: 10, np: 900, ne: [10, 2] }, { K: 16, R: 28, Kv: 36, Nc: 12, np: 1500, ne: [14, 2] },
+  { K: 20, R: 34, Kv: 44, Nc: 14, np: 2300, ne: [14, 3] }, { K: 24, R: 40, Kv: 52, Nc: 16, np: 3300, ne: [18, 3] }
+];
+const TRAIL = 12, PTRAIL = 16;
+/* normalised flat-plate loading shape  g(xi) = sqrt((1-xi)/(xi+0.02)),  integral = G  */
+let GN = 0; { for (let k = 0; k < 400; k++) { const x = (k + 0.5) / 400; GN += Math.sqrt((1 - x) / (x + 0.02)) / 400; } }
+const gShape = x => Math.sqrt((1 - x) / (x + 0.02)) / GN;
+
+function main() {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), cv = $('base'), ctx = cv.getContext('2d'), plot = $('plot'), pctx = plot.getContext('2d');
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 8) <= 4;
+  const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 500;
+  const S = {
+    foil: 'naca2412', cm: 4, cp: 4, ct: 12, AR: 8, taper: 0.5, sweep: 15, dih: 3, twist: -2, ell: false, span: 10,
+    aoa: 8, V: 70, overlay: 'cp', tracer: 'smoke', streams: false, wake: true, plane: false, planeX: 1.2, tufts: true, sepLine: true, grid: true,
+    plotOn: !smallScreen, plotMode: 'load', hudOn: true, auto: true, tier: isMobile ? 1 : 2, paused: false, spin: false
+  };
+  if (smallScreen) $('panel').classList.add('hidden');
+  let cssW = 1, cssH = 1, dpr = 1, pdpr = 1;
+  let foilObj = null, W = null, SOL = null, TH = null, wake = null, mesh = null, dirty = true, tier = TIERS[S.tier];
+  const mach = () => clamp(S.V / A_SOUND, 0.02, 0.75);
+
+  /* ---------------- camera ---------------- */
+  const cam = { az: -140 * DEG, el: 22 * DEG, dist: 6.6, tx: 0.9, ty: 0, tz: 0 };
+  const CP = { ex: 0, ey: 0, ez: 0, fx: 0, fy: 0, fz: 0, rx: 0, ry: 0, rz: 0, ux: 0, uy: 0, uz: 0, F: 1, cx: 0, cy: 0 };
+  function updateCam() {
+    const ce = Math.cos(cam.el), se = Math.sin(cam.el);
+    CP.ex = cam.tx + cam.dist * ce * Math.cos(cam.az); CP.ey = cam.ty + cam.dist * ce * Math.sin(cam.az); CP.ez = cam.tz + cam.dist * se;
+    let fx = cam.tx - CP.ex, fy = cam.ty - CP.ey, fz = cam.tz - CP.ez; const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+    let rx = fy, ry = -fx, rz = 0; const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;                    // f x z_up
+    const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    CP.fx = fx; CP.fy = fy; CP.fz = fz; CP.rx = rx; CP.ry = ry; CP.rz = rz; CP.ux = ux; CP.uy = uy; CP.uz = uz;
+    CP.F = 0.26 * Math.min(cssH * 1.55, cssW) * cam.dist; CP.cx = cssW * 0.5; CP.cy = cssH * 0.52;
+  }
+  const pr = [0, 0, 0];
+  function proj(x, y, z, o) {
+    const dx = x - CP.ex, dy = y - CP.ey, dz = z - CP.ez, zc = dx * CP.fx + dy * CP.fy + dz * CP.fz, s = CP.F / Math.max(0.05, zc);
+    o[0] = CP.cx + (dx * CP.rx + dy * CP.ry + dz * CP.rz) * s; o[1] = CP.cy - (dx * CP.ux + dy * CP.uy + dz * CP.uz) * s; o[2] = zc; return zc;
+  }
+  function resize() {
+    cssW = Math.max(100, stage.clientWidth); cssH = Math.max(100, stage.clientHeight);
+    dpr = Math.min(window.devicePixelRatio || 1, S.tier <= 0 ? 1 : 2);
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+    pdpr = Math.min(window.devicePixelRatio || 1, 2); plot.width = Math.round(plot.clientWidth * pdpr) || 260; plot.height = Math.round(plot.clientHeight * pdpr) || 112;
+  }
+
+  /* ---------------- solve / build ---------------- */
+  const interpK = (arr, y) => {                                   // linear interpolation of a per-strip array at span position y
+    const K = W.K, th = Math.acos(clamp(-y / W.s, -1, 1)), u = th * K / PI - 0.5, k0 = clamp(Math.floor(u), 0, K - 2), f = clamp(u - k0, 0, 1);
+    return arr[k0] * (1 - f) + arr[k0 + 1] * f;
+  };
+  function resolve() {
+    dirty = false; tier = TIERS[S.tier];
+    foilObj = foilSection(S.foil, { m: S.cm, p: S.cp, t: S.ct });
+    W = makeWing({ AR: S.AR, taper: S.taper, sweep: S.sweep, dih: S.dih, twist: S.twist, aoa: S.aoa, K: tier.K, foilObj, ell: S.ell });
+    SOL = solveWing(W, mach()); TH = wingTheory(W, S.aoa, mach());
+    if (!wake || wake.K !== tier.K || wake.R !== tier.R) { wake = new Wake(tier.K, tier.R); wake.init(W, SOL.G, 3.6); wake.skip = 3; }
+    wake.buildSegs(W, SOL.G, 3); buildMesh(); streamAge = 999; planeAge = 999; syncUi();
+  }
+  /* wing surface mesh: [upper, lower] x (Kv+1) x (Nc+1) vertices with a pressure value per vertex */
+  function cpSurf(side, xi, y) {
+    const cl = interpK(SOL.cl, y), ss = interpK(SOL.sepS, y), ae = interpK(SOL.aeff, y), fo = foilObj, beta = Math.sqrt(Math.max(0.2, 1 - mach() * mach()));
+    const cpt = (-3.8 * fo.tc * Math.sin(PI * Math.pow(Math.min(1, Math.max(0, xi)), 0.7)) + 1.4 * Math.exp(-xi / 0.012));
+    const dcp = cl * gShape(clamp(xi, 0, 1)), sp = side === 0 ? -0.5 : 0.5;
+    const sepOnUpper = ae >= 0, xs = 1 - 0.85 * ss, onSepSide = (side === 0) === sepOnUpper;
+    let c = cpt + sp * dcp;
+    if (onSepSide && ss > 0.02 && xi > xs) { const c0 = cpt + sp * cl * gShape(xs); c = c0 * 0.8; }
+    return clamp(c / beta, -6, 1.2);
+  }
+  function buildMesh() {
+    const Kv = tier.Kv, Nc = tier.Nc, nvx = Kv + 1, nvc = Nc + 1, nv = nvx * nvc;
+    const M = mesh && mesh.Kv === Kv && mesh.Nc === Nc ? mesh : { Kv, Nc, pos: [new Float32Array(nv * 3), new Float32Array(nv * 3)], cp: [new Float32Array(nv), new Float32Array(nv)], sepv: new Float32Array(nvx), ys: new Float32Array(nvx),
+      qc: new Float32Array(2 * Kv * Nc * 3), qn: new Float32Array(2 * Kv * Nc * 3), qt: new Float32Array(2 * Kv * Nc), qd: new Float64Array(2 * Kv * Nc), order: new Uint32Array(2 * Kv * Nc), qsep: new Float32Array(2 * Kv * Nc) };
+    const t3 = [0, 0, 0], xis = new Float32Array(nvc); for (let n = 0; n < nvc; n++) xis[n] = 0.5 * (1 - Math.cos(PI * n / Nc));
+    for (let m = 0; m < nvx; m++) {
+      const y = -W.s * Math.cos(PI * m / Kv); M.ys[m] = y; const ss = interpK(SOL.sepS, y), ae = interpK(SOL.aeff, y); M.sepv[m] = ss * (ae >= 0 ? 1 : -1);
+      for (let n = 0; n < nvc; n++) {
+        const xi = xis[n], yc = foilObj.yc(xi), yt = foilObj.yt(xi);
+        for (let sd = 0; sd < 2; sd++) {
+          W.pt(y, xi, yc + (sd === 0 ? yt : -yt), t3); const q = (m * nvc + n) * 3;
+          M.pos[sd][q] = t3[0]; M.pos[sd][q + 1] = t3[1]; M.pos[sd][q + 2] = t3[2]; M.cp[sd][m * nvc + n] = cpSurf(sd, xi, y);
+        }
+      }
+    }
+    // quad centres, normals, flat attributes
+    let qi = 0;
+    for (let sd = 0; sd < 2; sd++) for (let m = 0; m < Kv; m++) for (let n = 0; n < Nc; n++, qi++) {
+      const P = M.pos[sd], i00 = (m * nvc + n) * 3, i10 = ((m + 1) * nvc + n) * 3, i01 = (m * nvc + n + 1) * 3, i11 = ((m + 1) * nvc + n + 1) * 3;
+      for (let c = 0; c < 3; c++) M.qc[qi * 3 + c] = 0.25 * (P[i00 + c] + P[i10 + c] + P[i01 + c] + P[i11 + c]);
+      const ax = P[i11] - P[i00], ay = P[i11 + 1] - P[i00 + 1], az = P[i11 + 2] - P[i00 + 2], bx = P[i10] - P[i01], by = P[i10 + 1] - P[i01 + 1], bz = P[i10 + 2] - P[i01 + 2];
+      let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx; const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      const up = (sd === 0) === (nz >= 0) ? 1 : -1;      // make the normal point out of the surface
+      const sg = (sd === 0 ? 1 : -1) * (nz >= 0 ? 1 : -1) * 1; M.qn[qi * 3] = nx * sg * (sd === 0 ? 1 : 1); M.qn[qi * 3 + 1] = ny * sg; M.qn[qi * 3 + 2] = nz * sg;
+      const cpv = 0.25 * (M.cp[sd][m * nvc + n] + M.cp[sd][(m + 1) * nvc + n] + M.cp[sd][m * nvc + n + 1] + M.cp[sd][(m + 1) * nvc + n + 1]);
+      M.qt[qi] = cpv;
+      const xi = 0.5 * (xis[n] + xis[n + 1]), sv = 0.5 * (M.sepv[m] + M.sepv[m + 1]), ss = Math.abs(sv), onSide = (sd === 0) === (sv >= 0);
+      M.qsep[qi] = (onSide && ss > 0.02) ? sstep((xi - (1 - 0.85 * ss)) / 0.05) : 0;
+    }
+    mesh = M;
+  }
+
+  /* ---------------- particles & streamlines ---------------- */
+  const P = { cap: 0, vx: null, vy: null, vz: null, x: null, y: null, z: null, tr: null, age: null, alive: null, head: 0, frame: 0, phase: null };
+  const ind = [0, 0, 0], E2T = 0.05 * 0.05;
+  function initParticles() {
+    P.cap = S.tracer === 'off' ? 0 : (S.tracer === 'smoke' ? tier.np : Math.round(tier.np * 0.7)); const n = P.cap, L = S.tracer === 'smoke' ? TRAIL : PTRAIL; P.L = L;
+    P.vx = new Float32Array(n).fill(1); P.vy = new Float32Array(n); P.vz = new Float32Array(n); P.x = new Float32Array(n); P.y = new Float32Array(n); P.z = new Float32Array(n); P.tr = new Float32Array(n * L * 3); P.age = new Uint16Array(n); P.alive = new Uint8Array(n); P.head = 0; P.phase = new Float32Array(n);
+    if (S.tracer === 'path' && W) for (let k = 0; k < n; k++) { spawnRandom(k, true); }
+  }
+  function spawnRandom(k, anywhere) {
+    P.x[k] = anywhere ? -2.2 + Math.random() * 6.4 : -2.2 + Math.random() * 0.3; P.y[k] = (Math.random() * 2 - 1) * 1.7; P.z[k] = (Math.random() * 2 - 1) * 0.85 + 0.15;
+    P.age[k] = 0; P.alive[k] = 1; P.phase[k] = Math.random() * 6.28; for (let q = 0; q < P.L; q++) { const o = (k * P.L + q) * 3; P.tr[o] = P.x[k]; P.tr[o + 1] = P.y[k]; P.tr[o + 2] = P.z[k]; }
+  }
+  const wl = [0, 0];                                                // xi, zeta
+  const toWing = (x, y, z) => {
+    const ca = Math.cos(W.al), sa = Math.sin(W.al), xw = x * ca - z * sa, zw = z * ca + x * sa, ay = Math.abs(y), c = W.chord(y);
+    wl[0] = (xw - ay * W.tanL) / c + 0.25; wl[1] = (zw - ay * W.tanD) / c; return c;
+  };
+  function pushOut(p) {                                               // keep tracers out of the wing section
+    const y = p[1]; if (Math.abs(y) >= 1) return;
+    const c = toWing(p[0], y, p[2]), xi = wl[0]; if (xi <= 0 || xi >= 1) return;
+    const yc = foilObj.yc(xi), yt = foilObj.yt(xi) + 0.02; let ze = wl[1];
+    if (ze > yc - yt && ze < yc + yt) {
+      ze = ze >= yc ? yc + yt : yc - yt; const ay = Math.abs(y), ca = Math.cos(W.al), sa = Math.sin(W.al), xw = (xi - 0.25) * c + ay * W.tanL, zw = ze * c + ay * W.tanD;
+      p[0] = xw * ca + zw * sa; p[2] = zw * ca - xw * sa;
+    }
+  }
+  const pp = [0, 0, 0];
+  function velocity(x, y, z, o, turb) {                              // freestream + induced (+ separated-flow turbulence)
+    wake.induced(x, y, z, E2T, o); o[0] += 1;
+    if (turb && Math.abs(y) < 1) {
+      const c = toWing(x, y, z), xi = wl[0], ze = wl[1], ss = interpK(SOL.sepS, y), ae = interpK(SOL.aeff, y);
+      if (ss > 0.03) {
+        const xs = 1 - 0.85 * ss, above = ae >= 0 ? ze : -ze;
+        if (xi > xs && xi < 1.8 && above > -0.05 && above < 0.7) { const f = ss * Math.min(1, (xi - xs) / 0.15); o[0] -= 0.45 * f; o[1] += (Math.random() - 0.5) * 1.1 * f; o[2] += (Math.random() - 0.5) * 1.1 * f; }
+        else if (xi >= 1 && xi < 4 && Math.abs(ze) < 0.8) { const f = ss * Math.exp(-(xi - 1) / 1.6); o[0] -= 0.3 * f; o[1] += (Math.random() - 0.5) * 0.7 * f; o[2] += (Math.random() - 0.5) * 0.7 * f; }
+      }
+    }
+  }
+  const emitters = [];
+  function buildEmitters() {
+    emitters.length = 0; const [ny, nz] = tier.ne;
+    for (let a = 0; a < ny; a++) for (let b = 0; b < nz; b++) emitters.push([-2.0, -1.45 + 2.9 * (a + 0.5) / ny, -0.12 + 0.15 * b + (nz === 2 ? 0.04 : 0)]);
+  }
+  function updateParticles() {
+    if (!P.cap) return; P.frame++;
+    const dt = Math.min(0.04, 0.012 + 0.00022 * S.V), L = P.L, Lx = 6.3, life = Lx / dt;
+    if (S.tracer === 'smoke') {
+      const interval = Math.max(2, Math.ceil(emitters.length * life / P.cap));
+      if (P.frame % interval === 0) for (const e of emitters) {
+        const k = P.head; P.head = (P.head + 1) % P.cap; P.x[k] = e[0]; P.y[k] = e[1]; P.z[k] = e[2]; P.age[k] = 0; P.alive[k] = 1; P.phase[k] = Math.random(); P.vx[k] = 1; P.vy[k] = 0; P.vz[k] = 0;
+        for (let q = 0; q < L; q++) { const o = (k * L + q) * 3; P.tr[o] = e[0]; P.tr[o + 1] = e[1]; P.tr[o + 2] = e[2]; }
+      }
+    }
+    for (let k = 0; k < P.cap; k++) {
+      if (!P.alive[k]) continue;
+      let x = P.x[k], y = P.y[k], z = P.z[k];
+      if (((k + P.frame) & 1) === 0 || P.age[k] === 0) { velocity(x, y, z, ind, true); P.vx[k] = ind[0]; P.vy[k] = ind[1]; P.vz[k] = ind[2]; }
+      x += P.vx[k] * dt; y += P.vy[k] * dt; z += P.vz[k] * dt; pp[0] = x; pp[1] = y; pp[2] = z; pushOut(pp); x = pp[0]; y = pp[1]; z = pp[2];
+      P.age[k]++;
+      if (!(x < 4.4) || Math.abs(y) > 3.2 || Math.abs(z) > 2.2 || P.age[k] > life * 1.15 || x !== x) { if (S.tracer === 'path') spawnRandom(k, false); else P.alive[k] = 0; continue; }
+      P.x[k] = x; P.y[k] = y; P.z[k] = z;
+      const base = k * L * 3; P.tr.copyWithin(base + 3, base, base + (L - 1) * 3); P.tr[base] = x; P.tr[base + 1] = y; P.tr[base + 2] = z;
+    }
+  }
+  let streamPaths = [], streamAge = 999;
+  function buildStreams() {
+    streamAge = 0; streamPaths = [];
+    for (let a = 0; a < 15; a++) for (let b = 0; b < 3; b++) {
+      let x = -2.0, y = -1.5 + 3.0 * (a + 0.5) / 15, z = -0.1 + 0.14 * b; const pts = [x, y, z];
+      for (let n = 0; n < 190; n++) {
+        velocity(x, y, z, ind, false); const m = Math.hypot(ind[0], ind[1], ind[2]) || 1, ds = 0.04;
+        x += ds * ind[0] / m; y += ds * ind[1] / m; z += ds * ind[2] / m; pp[0] = x; pp[1] = y; pp[2] = z; pushOut(pp); x = pp[0]; y = pp[1]; z = pp[2];
+        if (x > 4.4) break; pts.push(x, y, z);
+      }
+      streamPaths.push(pts);
+    }
+  }
+  /* wake-plane slice: vertical velocity w/Vinf on a plane x = const */
+  const PU = 30, PV = 18, planeW = new Float32Array((PU + 1) * (PV + 1)); let planeAge = 999;
+  const PLY = 1.7, PLZ0 = -0.9, PLZ1 = 0.9;
+  function updatePlane() {
+    planeAge = 0; const x = S.planeX + 0.4;
+    for (let v = 0; v <= PV; v++) for (let u = 0; u <= PU; u++) {
+      const y = -PLY + 2 * PLY * u / PU, z = PLZ0 + (PLZ1 - PLZ0) * v / PV; wake.induced(x, y, z, E2T, ind); planeW[v * (PU + 1) + u] = ind[2];
+    }
+  }
+
+  /* ---------------- drawing ---------------- */
+  const LDIR = (() => { const l = Math.hypot(0.35, -0.45, 0.82); return [0.35 / l, -0.45 / l, 0.82 / l]; })();
+  const a3 = [0, 0, 0], b3 = [0, 0, 0], c3 = [0, 0, 0], d3 = [0, 0, 0];
+  let wingDepth = 0;
+  function drawGrid() {
+    if (!S.grid) return; const zf = -1.0; ctx.strokeStyle = 'rgba(80,110,150,.16)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = -2.5; x <= 5.51; x += 0.5) { proj(x, -2.4, zf, a3); proj(x, 2.4, zf, b3); ctx.moveTo(a3[0], a3[1]); ctx.lineTo(b3[0], b3[1]); }
+    for (let y = -2.4; y <= 2.41; y += 0.6) { proj(-2.5, y, zf, a3); proj(5.5, y, zf, b3); ctx.moveTo(a3[0], a3[1]); ctx.lineTo(b3[0], b3[1]); }
+    ctx.stroke();
+  }
+  function drawArrow() {
+    proj(-2.4, 0, 1.15, a3); proj(-1.5, 0, 1.15, b3); ctx.strokeStyle = 'rgba(160,190,220,.8)'; ctx.fillStyle = 'rgba(160,190,220,.9)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a3[0], a3[1]); ctx.lineTo(b3[0], b3[1]); ctx.stroke();
+    const dx = b3[0] - a3[0], dy = b3[1] - a3[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    ctx.beginPath(); ctx.moveTo(b3[0], b3[1]); ctx.lineTo(b3[0] - 9 * ux + 4 * uy, b3[1] - 9 * uy - 4 * ux); ctx.lineTo(b3[0] - 9 * ux - 4 * uy, b3[1] - 9 * uy + 4 * ux); ctx.fill();
+    ctx.font = '11px ui-monospace,Menlo,monospace'; ctx.fillText('V∞', a3[0], a3[1] - 8);
+  }
+  function drawWake() {
+    if (!S.wake) return;
+    const E = wake.E, R = wake.R, bins = [[], [], []];                       // by |strength| class
+    let gmax = 1e-6; for (let e = 0; e < E; e++) gmax = Math.max(gmax, Math.abs(wake.g[e]));
+    const P2 = [0, 0, 0];
+    for (const sgn of [1, -1]) for (let band = 0; band < 3; band++) {
+      const r0 = Math.floor(band * (R - 1) / 3), r1 = Math.floor((band + 1) * (R - 1) / 3);
+      for (let wcls = 0; wcls < 3; wcls++) {
+        ctx.beginPath(); let any = false;
+        for (let e = 0; e < E; e++) {
+          const g = wake.g[e * 1 + 0 * E] * 1, gs = wake.g[Math.min(R - 1, 6) * E + e], gg = (Math.abs(g) + Math.abs(gs)) * 0.5 / gmax, cls = gg > 0.55 ? 2 : (gg > 0.2 ? 1 : 0);
+          if (cls !== wcls || (g >= 0 ? 1 : -1) !== sgn) continue; any = true;
+          for (let r = r0; r <= r1; r++) { const q = r * E + e; proj(wake.px[q], wake.py[q], wake.pz[q], P2); r === r0 ? ctx.moveTo(P2[0], P2[1]) : ctx.lineTo(P2[0], P2[1]); }
+        }
+        if (!any) continue;
+        ctx.strokeStyle = sgn > 0 ? 'rgba(76,201,240,' + [0.8, 0.55, 0.3][band] + ')' : 'rgba(255,120,200,' + [0.8, 0.55, 0.3][band] + ')'; ctx.lineWidth = [0.9, 1.5, 2.4][wcls] * (1 + (2 - band) * 0.15); ctx.stroke();
+      }
+    }
+  }
+  function drawTipCores() {
+    if (!S.wake) return; const E = wake.E, R = wake.R, n = Math.max(2, Math.ceil(E / 4)), P2 = [0, 0, 0];
+    for (const half of [0, 1]) {
+      let sgn = 0; const e0 = half ? E - n : 0, e1 = half ? E : n; for (let e = e0; e < e1; e++) sgn += wake.g[e];
+      for (const pass of [0, 1]) {
+        ctx.beginPath();
+        for (let r = 0; r < R; r++) {
+          let sx = 0, sy = 0, sz = 0, sw = 1e-12;
+          for (let e = e0; e < e1; e++) { const q = r * E + e, w = Math.abs(wake.g[q]) + 1e-9; sx += wake.px[q] * w; sy += wake.py[q] * w; sz += wake.pz[q] * w; sw += w; }
+          proj(sx / sw, sy / sw, sz / sw, P2); r ? ctx.lineTo(P2[0], P2[1]) : ctx.moveTo(P2[0], P2[1]);
+        }
+        if (pass === 0) { ctx.strokeStyle = sgn > 0 ? 'rgba(76,201,240,.28)' : 'rgba(255,120,200,.28)'; ctx.lineWidth = 9; }
+        else { ctx.strokeStyle = sgn > 0 ? 'rgba(200,245,255,.95)' : 'rgba(255,215,240,.95)'; ctx.lineWidth = 2.6; }
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+      }
+    }
+  }
+  function drawWing() {
+    const M = mesh, Kv = M.Kv, Nc = M.Nc, nvc = Nc + 1, nvx = Kv + 1, nq = 2 * Kv * Nc;
+    const sx = [new Float32Array(nvx * nvc), new Float32Array(nvx * nvc)], sy = [new Float32Array(nvx * nvc), new Float32Array(nvx * nvc)];
+    for (let sd = 0; sd < 2; sd++) for (let i = 0; i < nvx * nvc; i++) { proj(M.pos[sd][3 * i], M.pos[sd][3 * i + 1], M.pos[sd][3 * i + 2], a3); sx[sd][i] = a3[0]; sy[sd][i] = a3[1]; }
+    for (let q = 0; q < nq; q++) { proj(M.qc[3 * q], M.qc[3 * q + 1], M.qc[3 * q + 2], a3); M.qd[q] = a3[2]; M.order[q] = q; }
+    const ord = Array.from(M.order).sort((i, j) => M.qd[j] - M.qd[i]);
+    const ov = S.overlay, per = Kv * Nc;
+    for (let oi = 0; oi < nq; oi++) {
+      const q = ord[oi], sd = q >= per ? 1 : 0, r = q - sd * per, m = (r / Nc) | 0, n = r - m * Nc;
+      const i00 = m * nvc + n, i10 = (m + 1) * nvc + n, i01 = m * nvc + n + 1, i11 = (m + 1) * nvc + n + 1;
+      const lam = Math.abs(M.qn[3 * q] * LDIR[0] + M.qn[3 * q + 1] * LDIR[1] + M.qn[3 * q + 2] * LDIR[2]), sh = 0.48 + 0.52 * lam;
+      let R, G, B;
+      if (ov === 'cp') { const c = M.qt[q], t = 0.5 + 0.5 * (c < 0 ? Math.max(c / 2.0, -1) : Math.min(c / 1.0, 1)), i = (clamp(t, 0, 1) * 255) | 0; R = LUT_DIV[3 * i]; G = LUT_DIV[3 * i + 1]; B = LUT_DIV[3 * i + 2]; }
+      else if (ov === 'sep') { const t = 0.3 + 0.7 * M.qsep[q], i = (clamp(t, 0, 1) * 255) | 0; R = LUT_SEP[3 * i]; G = LUT_SEP[3 * i + 1]; B = LUT_SEP[3 * i + 2]; if (M.qsep[q] < 0.05) { R = 70; G = 95; B = 135; } }
+      else if (ov === 'loading') { const m2 = clamp((m + 0.5) / Kv, 0, 1), y = -W.s * Math.cos(PI * m2), t = clamp(interpK(SOL.cl, y) / 2.0, 0, 1), i = (t * 255) | 0; R = LUT_SPD[3 * i]; G = LUT_SPD[3 * i + 1]; B = LUT_SPD[3 * i + 2]; }
+      else { R = 150; G = 168; B = 188; }
+      const col = 'rgb(' + ((R * sh) | 0) + ',' + ((G * sh) | 0) + ',' + ((B * sh) | 0) + ')';
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.moveTo(sx[sd][i00], sy[sd][i00]); ctx.lineTo(sx[sd][i10], sy[sd][i10]); ctx.lineTo(sx[sd][i11], sy[sd][i11]); ctx.lineTo(sx[sd][i01], sy[sd][i01]); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    // outline: leading edge and trailing edge
+    ctx.strokeStyle = 'rgba(220,235,250,.75)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (const n of [0, Nc]) for (let m = 0; m < nvx; m++) { const i = m * nvc + n; m ? ctx.lineTo(sx[0][i], sy[0][i]) : ctx.moveTo(sx[0][i], sy[0][i]); }
+    ctx.stroke();
+  }
+  function drawSepLine() {
+    if (!S.sepLine || !mesh) return; const sg = [[], []];
+    ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 2; ctx.beginPath(); let pen = false; const t3 = [0, 0, 0];
+    for (let m = 0; m <= 40; m++) {
+      const y = -W.s * Math.cos(PI * m / 40), ss = interpK(SOL.sepS, y), ae = interpK(SOL.aeff, y);
+      if (ss < 0.04) { pen = false; continue; }
+      const xi = 1 - 0.85 * ss, off = foilObj.yc(xi) + (ae >= 0 ? 1 : -1) * (foilObj.yt(xi) + 0.004); W.pt(y, xi, off, t3); proj(t3[0], t3[1], t3[2], a3);
+      pen ? ctx.lineTo(a3[0], a3[1]) : ctx.moveTo(a3[0], a3[1]); pen = true;
+    }
+    ctx.stroke();
+  }
+  function drawTufts(t) {
+    if (!S.tufts) return; const t3 = [0, 0, 0], t4 = [0, 0, 0];
+    ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    for (const sepPass of [0, 1]) {
+      ctx.strokeStyle = sepPass ? '#ff6b6b' : 'rgba(255,255,255,.92)'; ctx.beginPath();
+      for (let a = 0; a < 15; a++) for (let b = 0; b < 6; b++) {
+        const y = -W.s * 0.92 + 1.84 * W.s * (a + 0.5) / 15 * 1.0, xi = 0.1 + 0.15 * b, ss = interpK(SOL.sepS, y), ae = interpK(SOL.aeff, y), cl = interpK(SOL.cl, y);
+        const side = ae >= 0 ? 1 : -1, xs = 1 - 0.85 * ss, sepF = ss > 0.03 ? sstep((xi - xs) / 0.08) : 0, isSep = sepF > 0.5;
+        if ((isSep ? 1 : 0) !== sepPass) continue;
+        const sgy = y >= 0 ? 1 : -1, lean = sgy * (0.45 * Math.tan(S.sweep * DEG) - 0.2 * clamp(cl, -1.5, 1.5)) * (1 - sepF);
+        let ca = 1, sa = lean; const l1 = Math.hypot(ca, sa); ca /= l1; sa /= l1;
+        const ph = a * 1.7 + b * 2.3, fl = sepF * (1.1 * Math.sin(t * 9 + ph) + 0.4 * Math.sin(t * 5.3 + ph * 2));
+        const ang = Math.atan2(sa, ca) * (1 - sepF) + sepF * (PI + fl), len = 0.1 * (1 - 0.3 * sepF);
+        const dxi = len * Math.cos(ang), dyy = len * W.chord(y) * Math.sin(ang), yt = foilObj.yt(xi) + 0.006, off = foilObj.yc(xi) + side * yt;
+        W.pt(y, xi, off, t3); W.pt(clamp(y + dyy, -0.999, 0.999), clamp(xi + dxi, 0.02, 1), foilObj.yc(clamp(xi + dxi, 0.02, 1)) + side * (foilObj.yt(clamp(xi + dxi, 0.02, 1)) + 0.006), t4);
+        proj(t3[0], t3[1], t3[2], a3); proj(t4[0], t4[1], t4[2], b3); ctx.moveTo(a3[0], a3[1]); ctx.lineTo(b3[0], b3[1]);
+      }
+      ctx.stroke();
+    }
+  }
+  function drawParticles(front) {
+    if (!P.cap) return; const L = P.L, buckets = 6; const lines = [], pa = [0, 0, 0], pb = [0, 0, 0];
+    for (let b = 0; b < buckets * 2; b++) lines.push([]);
+    for (let k = 0; k < P.cap; k++) {
+      if (!P.alive[k]) continue;
+      const base = k * L * 3;
+      for (let q = 0; q < L - 1; q++) {
+        const o = base + q * 3, o2 = o + 3;
+        if (P.tr[o2] === P.tr[o] && P.tr[o2 + 1] === P.tr[o + 1]) continue;
+        const dxs = P.tr[o] - P.tr[o2], dys = P.tr[o + 1] - P.tr[o2 + 1], dzs = P.tr[o + 2] - P.tr[o2 + 2], sp = Math.hypot(dxs, dys, dzs) / (Math.min(0.04, 0.012 + 0.00022 * S.V));
+        const zc = proj(P.tr[o], P.tr[o + 1], P.tr[o + 2], pa), isFront = zc < wingDepth ? 1 : 0; if (isFront !== front) continue;
+        proj(P.tr[o2], P.tr[o2 + 1], P.tr[o2 + 2], pb);
+        const bi = clamp(((sp - 0.55) / 1.1 * buckets) | 0, 0, buckets - 1), fade = q < (L >> 1) ? 1 : 0;
+        lines[bi * 2 + fade].push(pa[0], pa[1], pb[0], pb[1]);
+      }
+    }
+    ctx.lineCap = 'round';
+    for (let b = 0; b < buckets; b++) for (let f = 0; f < 2; f++) {
+      const arr = lines[b * 2 + f]; if (!arr.length) continue; const i = ((b + 0.5) / buckets * 255) | 0;
+      ctx.strokeStyle = 'rgba(' + LUT_SPD[3 * i] + ',' + LUT_SPD[3 * i + 1] + ',' + LUT_SPD[3 * i + 2] + ',' + (f ? 0.9 : 0.35) + ')'; ctx.lineWidth = S.tracer === 'smoke' ? 1.5 : 1.2; ctx.beginPath();
+      for (let q = 0; q < arr.length; q += 4) { ctx.moveTo(arr[q], arr[q + 1]); ctx.lineTo(arr[q + 2], arr[q + 3]); }
+      ctx.stroke();
+    }
+  }
+  function drawStreams(front) {
+    if (!S.streams) return; ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 1; ctx.beginPath(); const pa = [0, 0, 0];
+    for (const pts of streamPaths) { let pen = false; for (let i = 0; i < pts.length; i += 3) { const zc = proj(pts[i], pts[i + 1], pts[i + 2], pa); if ((zc < wingDepth ? 1 : 0) !== front) { pen = false; continue; } pen ? ctx.lineTo(pa[0], pa[1]) : ctx.moveTo(pa[0], pa[1]); pen = true; } }
+    ctx.stroke();
+  }
+  function drawPlane() {
+    if (!S.plane) return; const x = S.planeX + 0.4, pa = [0, 0, 0], pb = [0, 0, 0], pc = [0, 0, 0], pd = [0, 0, 0];
+    for (let v = 0; v < PV; v++) for (let u = 0; u < PU; u++) {
+      const y0 = -PLY + 2 * PLY * u / PU, y1 = -PLY + 2 * PLY * (u + 1) / PU, z0 = PLZ0 + (PLZ1 - PLZ0) * v / PV, z1 = PLZ0 + (PLZ1 - PLZ0) * (v + 1) / PV;
+      const w = 0.25 * (planeW[v * (PU + 1) + u] + planeW[v * (PU + 1) + u + 1] + planeW[(v + 1) * (PU + 1) + u] + planeW[(v + 1) * (PU + 1) + u + 1]);
+      const t = 0.5 + 0.5 * clamp(w / 0.45, -1, 1), i = (t * 255) | 0;
+      proj(x, y0, z0, pa); proj(x, y1, z0, pb); proj(x, y1, z1, pc); proj(x, y0, z1, pd);
+      ctx.fillStyle = 'rgba(' + LUT_DIV[3 * i] + ',' + LUT_DIV[3 * i + 1] + ',' + LUT_DIV[3 * i + 2] + ',.62)'; ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.lineTo(pc[0], pc[1]); ctx.lineTo(pd[0], pd[1]); ctx.closePath(); ctx.fill();
+    }
+    proj(x, -PLY, PLZ0, pa); ctx.fillStyle = 'rgba(190,210,230,.85)'; ctx.font = '11px ui-monospace,Menlo,monospace'; ctx.fillText('plane: vertical velocity w/V∞ (blue = down, red = up)', pa[0], pa[1] + 14);
+  }
+  let tAnim = 0;
+  function render() {
+    updateCam(); tAnim += 1 / 60;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#090d13'; ctx.fillRect(0, 0, cssW, cssH);
+    drawGrid(); drawArrow();
+    proj(0.6, 0, 0, a3); wingDepth = a3[2];
+    drawStreams(0); drawParticles(0); drawWake(); drawTipCores(); drawPlane(); drawWing(); drawSepLine(); drawTufts(tAnim); drawParticles(1); drawStreams(1);
+    ctx.fillStyle = 'rgba(160,190,220,.7)'; ctx.font = '11px ui-monospace,Menlo,monospace';
+    ctx.fillText('drag: orbit · pinch / wheel: zoom · double-tap: reset view', 10, cssH - 10);
+  }
+
+  /* ---------------- HUD ---------------- */
+  const fmt = (v, d) => isFinite(v) ? v.toFixed(d) : '–', fmtN = v => Math.abs(v) >= 1e4 ? (v / 1e3).toFixed(1) + ' kN' : v.toFixed(0) + ' N';
+  let lastHud = 0;
+  function regimeText() {
+    const sf = SOL.stalledFrac; let maxS = 0, root = 0, tip = 0, nr = 0, nt = 0;
+    for (let k = 0; k < W.K; k++) { maxS = Math.max(maxS, SOL.sepS[k]); const a = Math.abs(W.yk[k]); if (a < 0.4) { root += SOL.sepS[k]; nr++; } else if (a > 0.65) { tip += SOL.sepS[k]; nt++; } }
+    root /= Math.max(1, nr); tip /= Math.max(1, nt);
+    if (maxS < 0.1) return 'Attached flow · tip vortices only';
+    const where = tip > root + 0.12 ? 'tip-first' : root > tip + 0.12 ? 'root-first' : 'broad';
+    return (sf > 0.6 ? 'Deep stall' : sf > 0.05 ? 'Stalling' : 'Trailing-edge separation') + ' · ' + where + ' · ' + (sf * 100).toFixed(0) + ' % of span';
+  }
+  function updateHud(now, fps) {
+    if (now - lastHud < 180 || !SOL) return; lastHud = now;
+    const Sp = S.span * S.span / S.AR, q = 0.5 * RHO_AIR * S.V * S.V;
+    $('hAoa').textContent = S.aoa.toFixed(1) + '°'; $('hMach').textContent = mach().toFixed(2); $('hV').textContent = S.V.toFixed(0) + ' m/s';
+    $('hAR').textContent = S.AR.toFixed(1) + ' · S ' + Sp.toFixed(1) + ' m²';
+    $('hCl').textContent = fmt(SOL.CL, 3); $('hCd').textContent = fmt(SOL.CD, 4); $('hCdi').textContent = fmt(SOL.CDi, 4);
+    $('hLD').textContent = SOL.CD > 1e-5 ? fmt(SOL.CL / SOL.CD, 1) : '–'; $('hE').textContent = fmt(Math.min(1, SOL.e), 2);
+    $('hL').textContent = fmtN(q * Sp * SOL.CL); $('hD').textContent = fmtN(q * Sp * SOL.CD);
+    $('hThCl').textContent = fmt(TH.CL, 3); $('hThCdi').textContent = fmt(TH.CDi, 4);
+    $('hReg').textContent = regimeText();
+    $('hGrid').textContent = W.K + ' strips · ' + wake.R + '-row wake · ' + P.cap + ' tracers · ' + fps.toFixed(0) + ' fps';
+  }
+
+  /* ---------------- span-load plot ---------------- */
+  let plotTick = 0;
+  function drawPlot() {
+    if (!S.plotOn || !SOL || (++plotTick % 6)) return;
+    const Wp = plot.width, Hp = plot.height, load = S.plotMode === 'load';
+    pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.clearRect(0, 0, Wp, Hp);
+    const L = 30 * pdpr, R = 6 * pdpr, T = 14 * pdpr, B = 12 * pdpr, pw = Wp - L - R, ph = Hp - T - B, K = W.K, cmean = W.b / W.AR;
+    const ell = y => (4 / PI) * SOL.CL * Math.sqrt(Math.max(0, 1 - y * y));
+    let top = 0.2; const val = k => load ? W.ck[k] * SOL.cl[k] / cmean : SOL.aeff[k] / DEG + foilObj.a0 / DEG;
+    for (let k = 0; k < K; k++) top = Math.max(top, val(k), load ? ell(W.yk[k]) : 0); top = Math.max(load ? 0.4 : foilObj.stall * 1.15, top * 1.1);
+    const X = y => L + (y + 1) / 2 * pw, Y = v => T + (1 - clamp(v / top, 0, 1)) * ph;
+    pctx.font = (9.5 * pdpr) + 'px ui-monospace,Menlo,monospace'; pctx.fillStyle = '#7f93aa'; pctx.strokeStyle = 'rgba(80,110,150,.35)'; pctx.lineWidth = pdpr;
+    pctx.fillText(load ? 'span loading c·cl / c̄ · tap: α_eff' : 'section angle α_eff (°) · tap: loading', L, 10 * pdpr);
+    pctx.strokeRect(L, T, pw, ph);
+    for (let k = 0; k < K; k++) if (SOL.sepS[k] > 0.5) { pctx.fillStyle = 'rgba(255,90,80,.22)'; pctx.fillRect(X(W.ye[k]), T, X(W.ye[k + 1]) - X(W.ye[k]), ph); }
+    pctx.fillStyle = '#7f93aa'; pctx.fillText(load ? top.toFixed(1) : top.toFixed(0), 3 * pdpr, T + 8 * pdpr); pctx.fillText('0', 3 * pdpr, T + ph);
+    if (!load) { const ys = Y(foilObj.stall); pctx.setLineDash([3 * pdpr, 3 * pdpr]); pctx.strokeStyle = 'rgba(255,107,107,.8)'; pctx.beginPath(); pctx.moveTo(L, ys); pctx.lineTo(L + pw, ys); pctx.stroke(); pctx.setLineDash([]); pctx.fillStyle = '#ff6b6b'; pctx.fillText('stall', L + pw - 24 * pdpr, ys - 2 * pdpr); }
+    if (load) { pctx.beginPath(); pctx.setLineDash([4 * pdpr, 3 * pdpr]); for (let i = 0; i <= 40; i++) { const y = -1 + 2 * i / 40, x = X(y), yy = Y(ell(y)); i ? pctx.lineTo(x, yy) : pctx.moveTo(x, yy); } pctx.strokeStyle = '#ffb347'; pctx.lineWidth = 1.5 * pdpr; pctx.stroke(); pctx.setLineDash([]); }
+    pctx.beginPath(); for (let k = 0; k < K; k++) { const x = X(W.yk[k]), y = Y(val(k)); k ? pctx.lineTo(x, y) : pctx.moveTo(x, y); }
+    pctx.strokeStyle = '#4cc9f0'; pctx.lineWidth = 1.8 * pdpr; pctx.stroke();
+    pctx.fillStyle = '#4cc9f0'; pctx.fillText('sim', L + pw - 58 * pdpr, T + 10 * pdpr); if (load) { pctx.fillStyle = '#ffb347'; pctx.fillText('ellipse', L + pw - 36 * pdpr, T + 20 * pdpr); }
+  }
+  plot.addEventListener('click', () => { S.plotMode = S.plotMode === 'load' ? 'alpha' : 'load'; plotTick = 99; });
+
+  /* ---------------- UI ---------------- */
+  function syncUi() {
+    $('aoaV').textContent = S.aoa.toFixed(1) + '°'; $('aoa').value = S.aoa; $('arV').textContent = S.AR.toFixed(1); $('ar').value = S.AR;
+    $('trV').textContent = S.taper.toFixed(2); $('swV').textContent = S.sweep.toFixed(0) + '°'; $('diV').textContent = S.dih.toFixed(0) + '°'; $('twV').textContent = S.twist.toFixed(1) + '°';
+    $('spV').textContent = S.span.toFixed(0) + ' m'; $('vV').textContent = S.V.toFixed(0) + ' m/s (M ' + mach().toFixed(2) + ')';
+    $('cmV').textContent = S.cm + ' %'; $('cpV').textContent = (S.cp / 10).toFixed(1); $('ctV').textContent = S.ct + ' %'; $('pxV').textContent = S.planeX.toFixed(1);
+    for (const id of ['taper', 'sweep', 'dih', 'twist']) $(id).disabled = false;
+    $('taper').disabled = S.ell;
+  }
+  const mark = () => { dirty = true; };
+  const bindRange = (id, key, fn) => { $(id).oninput = e => { S[key] = +e.target.value; if (fn) fn(); mark(); syncUi(); }; };
+  bindRange('aoa', 'aoa'); bindRange('ar', 'AR'); bindRange('taper', 'taper'); bindRange('sweep', 'sweep'); bindRange('dih', 'dih'); bindRange('twist', 'twist'); bindRange('span', 'span'); bindRange('vel', 'V');
+  bindRange('cm', 'cm'); bindRange('cp', 'cp'); bindRange('ct', 'ct'); bindRange('planeX', 'planeX', () => { planeAge = 999; });
+  document.querySelectorAll('[data-aoa]').forEach(b => b.onclick = () => { S.aoa = +b.dataset.aoa; mark(); syncUi(); });
+  document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { S.V = +b.dataset.v; mark(); syncUi(); });
+  const PLANS = { rect: { AR: 6, taper: 1, sweep: 0, dih: 0, twist: 0, ell: false }, taper: { AR: 8, taper: 0.4, sweep: 0, dih: 2, twist: -2, ell: false }, swept: { AR: 8, taper: 0.35, sweep: 30, dih: 3, twist: -3, ell: false },
+    ell: { AR: 8, taper: 0.5, sweep: 0, dih: 0, twist: 0, ell: true }, glider: { AR: 16, taper: 0.4, sweep: 3, dih: 4, twist: -2, ell: false }, low: { AR: 2.5, taper: 0.5, sweep: 10, dih: 0, twist: 0, ell: false } };
+  document.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { Object.assign(S, PLANS[b.dataset.plan]); mark(); syncUi(); });
+  $('foil').onchange = e => { S.foil = e.target.value; $('customBox').style.display = S.foil === 'custom' ? 'block' : 'none'; mark(); };
+  $('overlay').onchange = e => { S.overlay = e.target.value; updateLegend(); };
+  $('tracer').onchange = e => { S.tracer = e.target.value; initParticles(); buildEmitters(); };
+  const chk = (id, key, fn) => { $(id).onchange = e => { S[key] = e.target.checked; if (fn) fn(); }; };
+  chk('stream', 'streams', () => { streamAge = 999; }); chk('wakeOn', 'wake'); chk('planeOn', 'plane', () => { planeAge = 999; }); chk('tufts', 'tufts'); chk('sepLine', 'sepLine'); chk('grid', 'grid'); chk('spin', 'spin');
+  $('quality').onchange = e => { if (e.target.value === 'auto') S.auto = true; else { S.auto = false; S.tier = +e.target.value; rebuildAll(); } };
+  $('pause').onclick = () => { S.paused = !S.paused; $('pause').textContent = S.paused ? '▶ Resume' : '⏸ Pause'; };
+  $('reset').onclick = () => { wake = null; mark(); initParticles(); };
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+  function setView(v) {
+    const t = { iso: [-140, 22, 6.6], top: [-90, 88, 5.8], side: [-90, 2, 6.4], rear: [0, 8, 6.0], front: [180, 10, 6.0] }[v]; if (!t) return;
+    cam.az = t[0] * DEG; cam.el = t[1] * DEG; cam.dist = t[2]; cam.tx = 0.9;
+  }
+  $('menuBtn').onclick = () => { $('panel').classList.toggle('hidden'); setTimeout(onResize, 30); };
+  $('hudBtn').onclick = () => { S.hudOn = !S.hudOn; $('hud').classList.toggle('off', !S.hudOn); };
+  $('plotBtn').onclick = () => { S.plotOn = !S.plotOn; $('plotWrap').classList.toggle('on', S.plotOn); if (S.plotOn) { pdpr = Math.min(window.devicePixelRatio || 1, 2); plot.width = Math.round(plot.clientWidth * pdpr) || 260; plot.height = Math.round(plot.clientHeight * pdpr) || 112; plotTick = 99; } };
+  $('plotWrap').classList.toggle('on', S.plotOn);
+  $('rotOk').onclick = () => $('rotate').classList.remove('on');
+  $('full').onclick = () => { const el = document.documentElement; (el.requestFullscreen ? el.requestFullscreen() : (el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : Promise.reject())).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); };
+  function updateLegend() {
+    const c = $('lgBar').getContext('2d'), id = c.createImageData(128, 1), o = S.overlay; $('legend').style.display = o === 'none' ? 'none' : 'block';
+    const lut = o === 'cp' ? LUT_DIV : o === 'sep' ? LUT_SEP : LUT_SPD;
+    for (let i = 0; i < 128; i++) { const j = (i / 127 * 255) | 0; id.data[4 * i] = lut[3 * j]; id.data[4 * i + 1] = lut[3 * j + 1]; id.data[4 * i + 2] = lut[3 * j + 2]; id.data[4 * i + 3] = 255; } c.putImageData(id, 0, 0);
+    const T = { cp: ['Surface Cp (approx.)', '−2', '0', '+1'], sep: ['Surface flow state', 'attached', '', 'separated'], loading: ['Section lift cl', '0', '', '2.0'] }[o];
+    if (T) { $('lgTitle').textContent = T[0]; $('lgA').textContent = T[1]; $('lgB').textContent = T[2]; $('lgC').textContent = T[3]; }
+  }
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'SELECT') return;
+    if (e.key === 'ArrowUp') { S.aoa = clamp(S.aoa + 0.5, -10, 30); mark(); syncUi(); e.preventDefault(); } else if (e.key === 'ArrowDown') { S.aoa = clamp(S.aoa - 0.5, -10, 30); mark(); syncUi(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { cam.az -= 0.08; e.preventDefault(); } else if (e.key === 'ArrowRight') { cam.az += 0.08; e.preventDefault(); } else if (e.key === ' ') { $('pause').click(); e.preventDefault(); }
+  });
+  /* orbit / pinch */
+  const ptrs = new Map(); let pinch0 = 0, lastTap = 0;
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]); } const now = performance.now(); if (now - lastTap < 320 && ptrs.size === 1) setView('iso'); lastTap = now; $('hint').style.opacity = 0; });
+  cv.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId); if (!p) return;
+    if (ptrs.size === 1) { cam.az -= (e.clientX - p[0]) * 0.008; cam.el = clamp(cam.el + (e.clientY - p[1]) * 0.006, -10 * DEG, 88 * DEG); }
+    p[0] = e.clientX; p[1] = e.clientY;
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch0 > 0) cam.dist = clamp(cam.dist * pinch0 / d, 2.2, 14); pinch0 = d; }
+  });
+  const up = e => { ptrs.delete(e.pointerId); pinch0 = 0; }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => { cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.001), 2.2, 14); e.preventDefault(); }, { passive: false });
+  setTimeout(() => { $('hint').style.opacity = 0; }, 9000);
+
+  let rzT = 0; function onResize() { clearTimeout(rzT); rzT = setTimeout(() => { resize(); }, 200); }
+  window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
+  function rebuildAll() { resize(); wake = null; mark(); resolve(); initParticles(); buildEmitters(); }
+
+  /* ---------------- main loop ---------------- */
+  let lastT = performance.now(), fpsE = 60, workE = 8, lowT = 0, highT = 0, cool = 0, fr = 0;
+  document.addEventListener('visibilitychange', () => { lastT = performance.now(); });
+  function frame(now) {
+    requestAnimationFrame(frame); if (document.hidden) return;
+    const dtMs = Math.min(100, now - lastT); lastT = now; if (dtMs > 0) fpsE += (1000 / dtMs - fpsE) * 0.06;
+    const w0 = performance.now(); fr++;
+    if (dirty) { if (!wake) { wake = null; } resolve(); }
+    if (!S.paused) {
+      if (tier.K <= 16 || fr % 2 === 0) { wake.step(W, SOL.G, turbEdges()); wake.buildSegs(W, SOL.G, 3); }
+      updateParticles();
+      if (S.streams && ++streamAge > 50) buildStreams();
+      if (S.plane && ++planeAge > 6) updatePlane();
+    }
+    if (S.spin && !ptrs.size) cam.az += 0.004;
+    render(); drawPlot();
+    workE += (performance.now() - w0 - workE) * 0.08; updateHud(now, fpsE);
+    if (S.auto && now > cool && !S.paused) {
+      if (fpsE < 44) { lowT += dtMs; highT = 0; } else if (fpsE > 56 && workE < 8) { highT += dtMs; lowT = 0; } else { lowT = highT = 0; }
+      if (lowT > 2200 && S.tier > 0) { S.tier--; lowT = 0; cool = now + 5000; rebuildAll(); }
+      else if (highT > 9000 && S.tier < (isMobile ? 2 : 3)) { S.tier++; highT = 0; cool = now + 9000; rebuildAll(); }
+    }
+  }
+  const turbBuf = new Float64Array(64);
+  function turbEdges() { const K = W.K; for (let e = 0; e <= K; e++) { const a = e > 0 ? SOL.sepS[e - 1] : 0, b = e < K ? SOL.sepS[e] : 0; turbBuf[e] = Math.max(a, b); } return turbBuf; }
+
+  function setupPWA() {
+    let deferred = null;
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('install').style.display = 'block'; });
+    $('install').onclick = () => { if (deferred) { deferred.prompt(); deferred = null; $('install').style.display = 'none'; } };
+    if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+    try { if (screen.orientation && screen.orientation.lock && matchMedia('(display-mode: standalone)').matches) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
+  }
+  setupPWA(); resize(); updateLegend(); syncUi(); resolve(); initParticles(); buildEmitters();
+  requestAnimationFrame(frame);
+  window.__wing = { S, cam, get SOL() { return SOL; }, get W() { return W; }, get wake() { return wake; }, setView, resolve };
+}
+if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', main);
+
+</script>
+</body>
+</html>

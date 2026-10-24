@@ -2,7 +2,7 @@
 
 Real-time 3D wing simulator in the browser (no dependencies). A lifting-surface solver with a rolling-up vortex wake shows tip vortices, wing-tip / root stall and flow separation on a real 3D wing. Companion to AeroLab (2D) and NozzleLab.
 
-**Live demo:** https://bhargavd1501.github.io/Wing-3D/  *(change to your repo name)*
+**Live demo:** https://bhargavd1501.github.io/Wing-3D/  
 
 - Planform: aspect ratio 2–18, taper, sweep (−20…45°), dihedral, tip twist, span; presets for rectangular, tapered, swept, elliptical, glider and low-AR wings
 - Airfoils: NACA 0012 / 2412 / 4412, flat plate, custom NACA 4-digit
